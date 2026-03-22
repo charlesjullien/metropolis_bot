@@ -17,6 +17,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from tgworkbot.config import load_config
 from tgworkbot.db import Db
 from tgworkbot.finance_snapshot import get_finance_block_for_user_preferences, parse_finance_selection
+from tgworkbot.http_logging import quiet_http_client_loggers
 from tgworkbot.segment_prefs import (
     format_departures_block,
     line_is_rer,
@@ -1839,6 +1840,7 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    quiet_http_client_loggers()
     # Load .env from project root reliably (even if cwd differs, e.g. PythonAnywhere scheduled tasks)
     env_path = Path(__file__).resolve().parents[2] / ".env"
     load_dotenv(env_path)

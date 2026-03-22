@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from telegram import Bot
 
 from tgworkbot.config import load_config
+from tgworkbot.http_logging import quiet_http_client_loggers
 from tgworkbot.db import Db
 from tgworkbot.finance_snapshot import get_finance_block_for_user_preferences, parse_finance_selection
 from tgworkbot.segment_prefs import format_departures_block, segment_destination_label, segment_direction_hints
@@ -301,6 +302,8 @@ def application(environ, start_response):
     Endpoint:
       - GET/POST /check_for_notifications
     """
+    quiet_http_client_loggers()
+
     path = _wsgi_request_path(environ).rstrip("/") or "/"
     if path != "/check_for_notifications":
         return _json_response(
