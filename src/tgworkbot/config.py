@@ -1,29 +1,7 @@
 from __future__ import annotations
 
-import socket
 from dataclasses import dataclass
 from os import getenv
-
-
-def _running_on_pythonanywhere() -> bool:
-    try:
-        fqdn = socket.getfqdn().lower().rstrip(".")
-        return fqdn.endswith("pythonanywhere.com")
-    except Exception:
-        return False
-
-
-def _good_news_try_lemediapositif() -> bool:
-    """Sur PA gratuit, lemediapositif.com est en 403 proxy : désactivé par défaut."""
-    use = (getenv("GOOD_NEWS_USE_LEMEDIAPOSITIF") or "").strip().lower()
-    if use in ("1", "true", "yes", "on"):
-        return True
-    skip = (getenv("GOOD_NEWS_SKIP_LEMEDIAPOSITIF") or "").strip().lower()
-    if skip in ("1", "true", "yes", "on"):
-        return False
-    if _running_on_pythonanywhere():
-        return False
-    return True
 
 
 @dataclass(frozen=True)
@@ -35,14 +13,10 @@ class Config:
     enable_internal_notif_scheduler: bool
     # Telegram user id (numeric) allowed to run /purge_db YES (full DB wipe)
     bot_admin_telegram_id: int | None
-    # RSS 2.0 (URL https), ex. raw.githubusercontent.com/.../feed.xml — PythonAnywhere gratuit bloque lemediapositif.com
-    good_news_rss_url: str | None
-    # False sur PythonAnywhere sauf GOOD_NEWS_USE_LEMEDIAPOSITIF=1 (Internet sortant illimité)
-    good_news_try_lemediapositif: bool
     # Proxy Le Média Positif (Vercel) : OpenAPI Bearer, JSON {title, url}
     goodnews_api_url: str
     goodnews_swagger_token: str | None
-    # Repli https://newsapi.org (top-headlines France → articles en français)
+    # Repli : https://newsapi.org (top-headlines France)
     newsapiorg_key: str | None
 
 
@@ -66,8 +40,6 @@ def load_config() -> Config:
         except ValueError:
             bot_admin_telegram_id = None
 
-    good_news_rss = (getenv("GOOD_NEWS_RSS_URL") or "").strip() or None
-
     goodnews_token = (getenv("GOODNEWS_SWAGGER_AUTH_TOKEN") or "").strip() or None
     goodnews_url = (getenv("GOODNEWS_API_URL") or "").strip() or "https://metropolis-swagger.vercel.app/getGoodNewsOfTheDay"
     newsapi_key = (getenv("NEWSAPIORG_KEY") or "").strip() or None
@@ -79,10 +51,7 @@ def load_config() -> Config:
         db_path=db_path,
         enable_internal_notif_scheduler=enable_internal_notif_scheduler,
         bot_admin_telegram_id=bot_admin_telegram_id,
-        good_news_rss_url=good_news_rss,
-        good_news_try_lemediapositif=_good_news_try_lemediapositif(),
         goodnews_api_url=goodnews_url,
         goodnews_swagger_token=goodnews_token,
         newsapiorg_key=newsapi_key,
     )
-
