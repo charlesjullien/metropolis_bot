@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -62,8 +63,58 @@ def _fetch_exception_code(exc: BaseException) -> str:
     return type(exc).__name__.upper()
 
 
+# Repli NewsAPI : éviter titres clairement négatifs / anxiogènes pour une « bonne nouvelle ».
+_BAD_TITLE_FOR_BONNE_NOUVELLE = re.compile(
+    r"""
+    \b(?:morts?|décès|décédés?|décédée|décédé)\b
+    | \b(?:inquiétudes?)\b
+    | \b(?:blessures?|blessés?|blessées?)\b
+    | \b(?:hospitalisés?|hospitalisées?)\b
+    | \b(?:accidents?|attentats?|fusillades?)\b
+    | \b(?:suicides?|terrorisme|terroristes?)\b
+    | \b(?:guerre|guerres)\b
+    | \b(?:drames?|meurtres?|assassinats?)\b
+    | \b(?:catastrophes?|épidémies?|pandémie|pandémies)\b
+    | \b(?:enlèvements?|kidnapping)\b
+    | \b(?:condamnés?|condamnations?|arrestations?)\b
+    | \bcondamn
+    | \b(?:collisions?|explosions?|incendies?)\b
+    | \b(?:crashes?)\b
+    | \b(?:violences?)\b
+    | \bgenoux?\b
+    | \b(?:missiles?|bombardements?|bombes?)\b
+    | \b(?:agressions?|agresseurs?)\b
+    | \b(?:insécurité|insécurités)\b
+    | \bcarbone\b
+    | \b(?:menaces?|conflits?|invasions?|crises?)\b
+    | \b(?:sanctions?|embargos?)\b
+    | \b(?:pollution|réchauffement|climatiques?|alarmes?|alertes?)\b
+    | \b(?:otages?|effondrements?|scandales?|séismes?)\b
+    | \b(?:émeutes?|affrontements?)\b
+    | \b(?:cyberattaques?|piratages?|rançongiciels?)\b
+    | \b(?:délestages?|pénuries?|faillites?|licenciements?)\b
+    | \b(?:tragédies?|horreurs?|massacres?)\b
+    | \b(?:violations?|victimes?)\b
+    | \bviol\b
+    | \b(?:harcèlements?|corruptions?)\b
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _title_or_url_unsuitable_for_bonne_nouvelle(title: str, art_url: str) -> bool:
+    """True si le titre ou l’URL ne convient pas au libellé « bonne nouvelle » (NewsAPI)."""
+    tl = title.lower()
+    ul = art_url.lower()
+    if "/breves/" in ul or "/breve/" in ul:
+        return True
+    if _BAD_TITLE_FOR_BONNE_NOUVELLE.search(tl):
+        return True
+    return False
+
+
 def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
-    """Premier article avec titre + URL exploitables (évite entrées [Removed] du plan gratuit)."""
+    """Premier article avec titre + URL exploitables et ton compatible « bonne nouvelle »."""
     if data.get("status") != "ok":
         return None, None
     articles = data.get("articles")
@@ -78,6 +129,8 @@ def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
             continue
         tl = title.lower()
         if tl.startswith("[removed]") or "removed at publishers request" in tl:
+            continue
+        if _title_or_url_unsuitable_for_bonne_nouvelle(title, art_url):
             continue
         return title, art_url
     return None, None
@@ -147,7 +200,29 @@ async def _fetch_newsapi_fr_article(
         "User-Agent": _HTTP_HEADERS["User-Agent"],
     }
 
+    # D’abord des rubriques moins « fil rouge » que le flux général (sports/blessures, etc.).
     attempts: list[tuple[str, str, str]] = [
+        (
+            "top-headlines",
+            _newsapi_build_url(
+                "top-headlines", key, country="fr", category="science", pageSize="100"
+            ),
+            "top-headlines country=fr category=science pageSize=100",
+        ),
+        (
+            "top-headlines",
+            _newsapi_build_url(
+                "top-headlines", key, country="fr", category="technology", pageSize="100"
+            ),
+            "top-headlines country=fr category=technology pageSize=100",
+        ),
+        (
+            "top-headlines",
+            _newsapi_build_url(
+                "top-headlines", key, country="fr", category="health", pageSize="100"
+            ),
+            "top-headlines country=fr category=health pageSize=100",
+        ),
         (
             "top-headlines",
             _newsapi_build_url("top-headlines", key, country="fr", pageSize="100"),
