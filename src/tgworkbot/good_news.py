@@ -54,6 +54,26 @@ def _strip_inner_html(fragment: str) -> str:
     return re.sub(r"<[^>]+>", "", fragment)
 
 
+def _nonretryable_request_error(exc: BaseException) -> bool:
+    """403 proxy CONNECT, 407, ou réponse HTTP « définitive » : retenter ne sert pas."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        return exc.response.status_code in _HTTP_NO_RETRY_STATUS
+    low = str(exc).lower()
+    if "403" in low and ("proxy" in low or "forbidden" in low or "connect" in low):
+        return True
+    if "407" in low and "proxy" in low:
+        return True
+    return False
+
+
+def _final_error_code_from_request_error(exc: BaseException, fallback: str) -> str:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        return f"HTTP_{exc.response.status_code}"
+    if "403" in str(exc):
+        return "HTTP_403"
+    return fallback
+
+
 def _fetch_exception_code(exc: BaseException) -> str:
     if isinstance(exc, httpx.TimeoutException):
         return "TIMEOUT"
@@ -161,6 +181,10 @@ async def _get_with_retries(
         except httpx.RequestError as e:
             last_code = _fetch_exception_code(e)
             LOG.warning("good_news GET %s attempt %s/%s: %s", url, attempt + 1, max_attempts, e)
+            if _nonretryable_request_error(e):
+                final = _final_error_code_from_request_error(e, last_code)
+                LOG.info("good_news GET %s: %s (pas de nouvelle tentative)", url, final)
+                return None, final
         except OSError:
             return None, "OS_ERROR"
         else:
@@ -183,8 +207,8 @@ async def fetch_good_news_article(
     """
     Retourne (titre, url, code_erreur). Si code_erreur est non None, ignorer titre/url.
 
-    Ordre : GOOD_NEWS_RSS_URL (optionnel) → Le Média Positif (RSS + HTML) → Wikinews Atom
-    (domaine autorisé sur PythonAnywhere gratuit quand lemediapositif.com est en 403 proxy).
+    Ordre : GOOD_NEWS_RSS_URL (optionnel) → Le Média Positif (hors PythonAnywhere par défaut)
+    → Wikinews Atom. Sur PA : définir GOOD_NEWS_RSS_URL (ex. raw.githubusercontent.com) si Wikinews répond 403.
     """
     last_err: str | None = None
 
@@ -203,30 +227,36 @@ async def fetch_good_news_article(
             if parse_err:
                 LOG.warning("good_news GOOD_NEWS_RSS_URL parse: %s", parse_err)
 
-    r, err = await _get_with_retries(
-        client, url=LM_POSITIF_RSS_URL, headers=_RSS_HEADERS, max_attempts=max_attempts
-    )
-    last_err = err or last_err
-    if r is not None:
-        title, art_url, parse_err = _parse_first_rss_item(r.text)
-        if not parse_err and title and art_url:
-            return title, art_url, None
-        if parse_err:
-            LOG.warning("good_news RSS parse: %s", parse_err)
+    if cfg.good_news_try_lemediapositif:
+        r, err = await _get_with_retries(
+            client, url=LM_POSITIF_RSS_URL, headers=_RSS_HEADERS, max_attempts=max_attempts
+        )
+        last_err = err or last_err
+        if r is not None:
+            title, art_url, parse_err = _parse_first_rss_item(r.text)
+            if not parse_err and title and art_url:
+                return title, art_url, None
+            if parse_err:
+                LOG.warning("good_news RSS parse: %s", parse_err)
 
-    r2, err2 = await _get_with_retries(
-        client, url=LM_POSITIF_LIST_URL, headers=_HTTP_HEADERS, max_attempts=max_attempts
-    )
-    last_err = err2 or last_err
-    if r2 is not None:
-        body = r2.text
-        m = _ENTRY_TITLE_RE.search(body)
-        if m:
-            url = m.group(1).strip()
-            title = html_module.unescape(_strip_inner_html(m.group(2))).strip()
-            if title and url:
-                return title, url, None
-        LOG.warning("good_news HTML scrape: SCRAPE_NO_ARTICLE")
+        r2, err2 = await _get_with_retries(
+            client, url=LM_POSITIF_LIST_URL, headers=_HTTP_HEADERS, max_attempts=max_attempts
+        )
+        last_err = err2 or last_err
+        if r2 is not None:
+            body = r2.text
+            m = _ENTRY_TITLE_RE.search(body)
+            if m:
+                url = m.group(1).strip()
+                title = html_module.unescape(_strip_inner_html(m.group(2))).strip()
+                if title and url:
+                    return title, url, None
+            LOG.warning("good_news HTML scrape: SCRAPE_NO_ARTICLE")
+    else:
+        LOG.debug(
+            "good_news: Le Média Positif ignoré (PythonAnywhere ou GOOD_NEWS_SKIP_LEMEDIAPOSITIF). "
+            "Pour le réactiver sur un compte à accès Internet complet : GOOD_NEWS_USE_LEMEDIAPOSITIF=1"
+        )
 
     r3, err3 = await _get_with_retries(
         client,
