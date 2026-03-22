@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from tgworkbot.config import load_config
@@ -1831,7 +1831,12 @@ async def _post_init(app: Application) -> None:
             LOG.info("JobQueue non disponible et scheduler interne désactivé (ENABLE_INTERNAL_NOTIF_SCHEDULER=0).")
 
 async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    LOG.exception("Unhandled error", exc_info=context.error)
+    err = context.error
+    # Long polling via le proxy PythonAnywhere : coupures TCP occasionnelles, PTB réessaie ensuite.
+    if isinstance(err, NetworkError):
+        LOG.warning("Telegram API (réseau): %s", err)
+        return
+    LOG.error("Unhandled error", exc_info=err)
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text(
             "Désolé, une erreur est survenue. Réessayez dans quelques secondes."
