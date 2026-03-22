@@ -42,6 +42,8 @@ class Config:
     # Proxy Le Média Positif (Vercel) : OpenAPI Bearer, JSON {title, url}
     goodnews_api_url: str
     goodnews_swagger_token: str | None
+    # Repli https://newsapi.org (top-headlines France → articles en français)
+    newsapiorg_key: str | None
 
 
 def load_config() -> Config:
@@ -68,6 +70,7 @@ def load_config() -> Config:
 
     goodnews_token = (getenv("GOODNEWS_SWAGGER_AUTH_TOKEN") or "").strip() or None
     goodnews_url = (getenv("GOODNEWS_API_URL") or "").strip() or "https://metropolis-swagger.vercel.app/getGoodNewsOfTheDay"
+    newsapi_key = (getenv("NEWSAPIORG_KEY") or "").strip() or None
 
     return Config(
         telegram_bot_token=token,
@@ -80,5 +83,6 @@ def load_config() -> Config:
         good_news_try_lemediapositif=_good_news_try_lemediapositif(),
         goodnews_api_url=goodnews_url,
         goodnews_swagger_token=goodnews_token,
+        newsapiorg_key=newsapi_key,
     )
 

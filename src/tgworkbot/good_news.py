@@ -5,6 +5,7 @@ import html as html_module
 import logging
 import re
 from datetime import datetime
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -18,32 +19,23 @@ LOG = logging.getLogger("tgworkbot.news")
 # Flux RSS : beaucoup moins de données que la page catégorie → souvent ok là où le HTML échoue (proxy PA, timeouts).
 LM_POSITIF_RSS_URL = "https://lemediapositif.com/category/nos-articles/feed/"
 LM_POSITIF_LIST_URL = "https://lemediapositif.com/category/nos-articles/"
-# Repli si l’API Métropolis / RSS perso / scrape LM échouent (whitelist PA typique).
-_PUBLIC_RSS_FALLBACKS: tuple[tuple[str, str, str], ...] = (
+# Repli si API / NewsAPI / RSS perso / scrape LM échouent (whitelist PA typique).
+_PUBLIC_RSS_FALLBACKS: tuple[tuple[str, str], ...] = (
     (
         "https://fr.wikipedia.org/w/api.php?action=featuredfeed&feed=featured&feedformat=rss&language=fr",
         "[Wikipédia] ",
-        "rss",
     ),
     (
         "https://commons.wikimedia.org/w/api.php?action=featuredfeed&feed=potd&feedformat=rss&language=fr",
         "[Wikimedia Commons] ",
-        "rss",
-    ),
-    (
-        "https://apod.nasa.gov/apod.rss",
-        "[NASA APOD] ",
-        "apod",
     ),
     (
         "https://www.gutenberg.org/cache/epub/feeds/today.rss",
         "[Gutenberg] ",
-        "rss",
     ),
     (
         "https://blog.khanacademy.org/feed/",
         "[Khan Academy] ",
-        "rss",
     ),
 )
 
@@ -134,28 +126,68 @@ def _parse_first_rss_item(body: str) -> tuple[str | None, str | None, str | None
     return title, url, None
 
 
-def _parse_first_apod_rss_item(body: str) -> tuple[str | None, str | None, str | None]:
-    """APOD : <title> souvent vide ; alt de l’image ou extrait de <description>."""
-    m = re.search(r"<item\b[^>]*>(.*?)</item>", body, re.IGNORECASE | re.DOTALL)
-    if not m:
-        return None, None, "RSS_NO_ITEM"
-    block = m.group(1)
-    lm = re.search(r"<link\b[^>]*>\s*([^<\s]+)\s*</link>", block, re.IGNORECASE)
-    if not lm:
-        return None, None, "RSS_PARSE_INCOMPLETE"
-    url = lm.group(1).strip()
-    alt_m = re.search(r'alt="([^"]*)"', block)
-    title: str | None = None
-    if alt_m and alt_m.group(1).strip():
-        title = html_module.unescape(alt_m.group(1).strip())
-    if not title:
-        dm = re.search(r"<description\b[^>]*>(.*?)</description>", block, re.IGNORECASE | re.DOTALL)
-        if dm:
-            raw = html_module.unescape(re.sub(r"<[^>]+>", " ", dm.group(1)))
-            title = re.sub(r"\s+", " ", raw).strip()[:240] or None
-    if not title:
-        title = "Astronomy Picture of the Day"
-    return title, url, None
+def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
+    """Premier article avec titre + URL exploitables (évite entrées [Removed] du plan gratuit)."""
+    if data.get("status") != "ok":
+        return None, None
+    articles = data.get("articles")
+    if not isinstance(articles, list):
+        return None, None
+    for a in articles:
+        if not isinstance(a, dict):
+            continue
+        title = str(a.get("title") or "").strip()
+        art_url = str(a.get("url") or "").strip()
+        if not title or not art_url:
+            continue
+        if title.lower().startswith("[removed]"):
+            continue
+        return title, art_url
+    return None, None
+
+
+async def _fetch_newsapi_fr_article(
+    *, client: httpx.AsyncClient, cfg: Config, max_attempts: int
+) -> tuple[str | None, str | None, str | None]:
+    """
+    Top headlines France (langue / sources françaises).
+    https://newsapi.org/docs/endpoints/top-headlines
+    """
+    if not cfg.newsapiorg_key:
+        return None, None, None
+    q = urlencode(
+        {
+            "country": "fr",
+            "pageSize": "20",
+            "apiKey": cfg.newsapiorg_key,
+        }
+    )
+    url = f"https://newsapi.org/v2/top-headlines?{q}"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": _HTTP_HEADERS["User-Agent"],
+    }
+    r, err = await _get_with_retries(
+        client,
+        url=url,
+        headers=headers,
+        max_attempts=max_attempts,
+        url_for_log="https://newsapi.org/v2/top-headlines?country=fr&pageSize=20&apiKey=***",
+    )
+    if r is None:
+        return None, None, err or "REQUEST_ERROR"
+    try:
+        data = r.json()
+    except ValueError:
+        return None, None, "JSON_ERROR"
+    if data.get("status") == "error":
+        msg = data.get("message") or data.get("code") or "NEWSAPI_ERROR"
+        LOG.warning("good_news NewsAPI: %s", msg)
+        return None, None, "NEWSAPI_ERROR"
+    title, art_url = _first_usable_newsapi_article(data)
+    if not title or not art_url:
+        return None, None, "NEWSAPI_NO_ARTICLE"
+    return title, art_url, None
 
 
 async def _fetch_goodnews_metropolis_swagger(
@@ -198,8 +230,10 @@ async def _get_with_retries(
     url: str,
     headers: dict[str, str],
     max_attempts: int,
+    url_for_log: str | None = None,
 ) -> tuple[httpx.Response | None, str | None]:
-    """(réponse 200 avec .text utilisable, code_erreur)."""
+    """(réponse 200 avec .text utilisable, code_erreur). url_for_log : libellé sans secret (ex. clé API)."""
+    log_target = url_for_log or url
     last_code: str | None = None
     for attempt in range(max_attempts):
         try:
@@ -208,10 +242,14 @@ async def _get_with_retries(
             last_code = "TIMEOUT"
         except httpx.RequestError as e:
             last_code = _fetch_exception_code(e)
-            LOG.warning("good_news GET %s attempt %s/%s: %s", url, attempt + 1, max_attempts, e)
+            LOG.warning(
+                "good_news GET %s attempt %s/%s: %s", log_target, attempt + 1, max_attempts, e
+            )
             if _nonretryable_request_error(e):
                 final = _final_error_code_from_request_error(e, last_code)
-                LOG.info("good_news GET %s: %s (pas de nouvelle tentative)", url, final)
+                LOG.info(
+                    "good_news GET %s: %s (pas de nouvelle tentative)", log_target, final
+                )
                 return None, final
         except OSError:
             return None, "OS_ERROR"
@@ -220,7 +258,7 @@ async def _get_with_retries(
                 return r, None
             last_code = f"HTTP_{r.status_code}"
             if r.status_code in _HTTP_NO_RETRY_STATUS:
-                LOG.info("good_news GET %s: %s (arrêt des tentatives)", url, last_code)
+                LOG.info("good_news GET %s: %s (arrêt des tentatives)", log_target, last_code)
                 return None, last_code
 
         if attempt + 1 < max_attempts:
@@ -235,7 +273,7 @@ async def fetch_good_news_article(
     """
     Retourne (titre, url, code_erreur). Si code_erreur est non None, ignorer titre/url.
 
-    Ordre : API Métropolis (Bearer) si GOODNEWS_SWAGGER_AUTH_TOKEN → GOOD_NEWS_RSS_URL
+    Ordre : API Métropolis (Bearer) → NewsAPI (FR) si NEWSAPIORG_KEY → GOOD_NEWS_RSS_URL
     → scrape Le Média Positif (hors PA par défaut) → flux RSS publics (repli).
     """
     last_err: str | None = None
@@ -247,6 +285,14 @@ async def fetch_good_news_article(
         return api_title, api_url, None
     if api_err is not None:
         last_err = api_err
+
+    na_title, na_url, na_err = await _fetch_newsapi_fr_article(
+        client=client, cfg=cfg, max_attempts=min(3, max_attempts)
+    )
+    if na_title and na_url:
+        return na_title, na_url, None
+    if na_err is not None:
+        last_err = na_err
 
     if cfg.good_news_rss_url:
         r0, e0 = await _get_with_retries(
@@ -296,7 +342,7 @@ async def fetch_good_news_article(
 
     # Peu de tentatives par URL (éviter 429 côté serveurs publics).
     fb_attempts = min(2, max_attempts)
-    for fb_url, prefix, kind in _PUBLIC_RSS_FALLBACKS:
+    for fb_url, prefix in _PUBLIC_RSS_FALLBACKS:
         rfb, err_fb = await _get_with_retries(
             client,
             url=fb_url,
@@ -306,10 +352,7 @@ async def fetch_good_news_article(
         last_err = err_fb or last_err
         if rfb is None:
             continue
-        if kind == "apod":
-            title, art_url, parse_err = _parse_first_apod_rss_item(rfb.text)
-        else:
-            title, art_url, parse_err = _parse_first_rss_item(rfb.text)
+        title, art_url, parse_err = _parse_first_rss_item(rfb.text)
         if not parse_err and title and art_url:
             return f"{prefix}{title}", art_url, None
         if parse_err:
