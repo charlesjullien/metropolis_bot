@@ -18,13 +18,29 @@ LOG = logging.getLogger("tgworkbot.news")
 # Flux RSS : beaucoup moins de données que la page catégorie → souvent ok là où le HTML échoue (proxy PA, timeouts).
 LM_POSITIF_RSS_URL = "https://lemediapositif.com/category/nos-articles/feed/"
 LM_POSITIF_LIST_URL = "https://lemediapositif.com/category/nos-articles/"
-# PythonAnywhere gratuit : proxy 403 sur la plupart des sites hors whitelist ; .wikinews.org est autorisé.
-WIKINEWS_RECENT_ATOM_URL = (
-    "https://fr.wikinews.org/w/index.php?title=Sp%C3%A9cial:Modifications_r%C3%A9centes&feed=atom"
+# Repli RSS accessibles depuis PythonAnywhere gratuit (whitelist *.ec.europa.eu, wikipedia.org, etc.).
+# Ordre : français / actualité d’abord, puis contenu plus « positif » côté env., puis culture, stats.
+_PUBLIC_RSS_FALLBACKS: tuple[tuple[str, str], ...] = (
+    (
+        "https://ec.europa.eu/commission/presscorner/api/rss?language=fr",
+        "[Commission européenne] ",
+    ),
+    (
+        "https://environment.ec.europa.eu/node/92/rss_en?prefLang=fr",
+        "[Environnement UE] ",
+    ),
+    (
+        "https://fr.wikipedia.org/w/api.php?action=featuredfeed&feed=featured&feedformat=rss&language=fr",
+        "[Wikipédia] ",
+    ),
+    (
+        "https://ec.europa.eu/eurostat/api/dissemination/catalogue/rss/fr/statistics-update.rss",
+        "[Eurostat] ",
+    ),
 )
 
-# Codes HTTP où retenter ne sert pas (ex. 403 « site interdit » sur le proxy PA).
-_HTTP_NO_RETRY_STATUS = frozenset({401, 403, 404})
+# Codes HTTP où retenter ne sert pas (403 proxy, 429 rate limit, etc.).
+_HTTP_NO_RETRY_STATUS = frozenset({401, 403, 404, 429})
 _HTTP_HEADERS = {
     # User-Agent « navigateur » : certains hébergeurs / WAF bloquent les clients identifiables comme bots.
     "User-Agent": (
@@ -110,60 +126,6 @@ def _parse_first_rss_item(body: str) -> tuple[str | None, str | None, str | None
     return title, url, None
 
 
-def _wikinews_entry_is_noise(*, title: str, article_url: str) -> bool:
-    t = title.strip()
-    if not t:
-        return True
-    bad_starts = (
-        "Utilisateur:",
-        "Discussion utilisateur:",
-        "Discussion:",
-        "Spécial:",
-        "Fichier:",
-        "Portail:",
-        "Modèle:",
-        "MediaWiki:",
-        "Wikinews  - Modifications récentes",
-    )
-    if any(t.startswith(p) for p in bad_starts):
-        return True
-    if "Utilisateur:" in article_url or "Discussion_utilisateur:" in article_url:
-        return True
-    return False
-
-
-def _parse_first_good_wikinews_atom(body: str) -> tuple[str | None, str | None, str | None]:
-    """Atom (modifs récentes) : premier article d’actualité exploitable."""
-    for m in re.finditer(r"<entry>(.*?)</entry>", body, re.IGNORECASE | re.DOTALL):
-        block = m.group(1)
-        tm = re.search(
-            r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>",
-            block,
-            re.IGNORECASE | re.DOTALL,
-        )
-        lm = re.search(
-            r'<link[^>]*\brel=["\']alternate["\'][^>]*\bhref=["\']([^"\']+)["\']',
-            block,
-            re.IGNORECASE,
-        )
-        if not lm:
-            lm = re.search(
-                r'<link[^>]*\bhref=["\']([^"\']+)["\'][^>]*\brel=["\']alternate["\']',
-                block,
-                re.IGNORECASE,
-            )
-        if not tm or not lm:
-            continue
-        title = html_module.unescape(re.sub(r"<[^>]+>", "", tm.group(1))).strip()
-        url = html_module.unescape(lm.group(1)).strip()
-        if not title or not url:
-            continue
-        if _wikinews_entry_is_noise(title=title, article_url=url):
-            continue
-        return title, url, None
-    return None, None, "ATOM_NO_ARTICLE"
-
-
 async def _get_with_retries(
     client: httpx.AsyncClient,
     *,
@@ -208,7 +170,7 @@ async def fetch_good_news_article(
     Retourne (titre, url, code_erreur). Si code_erreur est non None, ignorer titre/url.
 
     Ordre : GOOD_NEWS_RSS_URL (optionnel) → Le Média Positif (hors PythonAnywhere par défaut)
-    → Wikinews Atom. Sur PA : définir GOOD_NEWS_RSS_URL (ex. raw.githubusercontent.com) si Wikinews répond 403.
+    → flux publics RSS (Commission UE, environnement UE, Wikipédia « à la une », Eurostat).
     """
     last_err: str | None = None
 
@@ -258,19 +220,23 @@ async def fetch_good_news_article(
             "Pour le réactiver sur un compte à accès Internet complet : GOOD_NEWS_USE_LEMEDIAPOSITIF=1"
         )
 
-    r3, err3 = await _get_with_retries(
-        client,
-        url=WIKINEWS_RECENT_ATOM_URL,
-        headers=_RSS_HEADERS,
-        max_attempts=max_attempts,
-    )
-    last_err = err3 or last_err
-    if r3 is not None:
-        title, art_url, parse_err = _parse_first_good_wikinews_atom(r3.text)
+    # Peu de tentatives par URL (éviter 429 côté serveurs publics).
+    fb_attempts = min(2, max_attempts)
+    for fb_url, prefix in _PUBLIC_RSS_FALLBACKS:
+        rfb, err_fb = await _get_with_retries(
+            client,
+            url=fb_url,
+            headers=_RSS_HEADERS,
+            max_attempts=fb_attempts,
+        )
+        last_err = err_fb or last_err
+        if rfb is None:
+            continue
+        title, art_url, parse_err = _parse_first_rss_item(rfb.text)
         if not parse_err and title and art_url:
-            return f"[Wikinews] {title}", art_url, None
+            return f"{prefix}{title}", art_url, None
         if parse_err:
-            LOG.warning("good_news Wikinews Atom: %s", parse_err)
+            LOG.warning("good_news repli RSS parse (%s): %s", fb_url, parse_err)
 
     return None, None, last_err or "REQUEST_ERROR"
 
