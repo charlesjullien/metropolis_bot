@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, time
 from pathlib import Path
 from typing import Final
@@ -79,9 +80,6 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "",
         "👁 Voir mon setup actuel :",
         "/status",
-        "",
-        "🛤 Modes de transport (optionnel) :",
-        "/modes",
     ]
     if is_admin:
         lines.extend(
@@ -330,21 +328,80 @@ def _parse_finance_text(text: str) -> set[str] | None:
     return selected if selected or raw in {"aucun", "rien", "none", "no"} else None
 
 
-def _parse_notif_time_input(text: str) -> str | None:
+def _parse_notif_time_parts(text: str) -> tuple[int, int] | None:
+    """Retourne (heure, minute) si le texte ressemble à une heure, sinon None."""
     raw = (text or "").strip().lower().replace("h", ":").replace(" ", "")
     if raw.isdigit() and len(raw) in (3, 4):
         raw = raw.zfill(4)
         raw = f"{raw[0:2]}:{raw[2:4]}"
-    m = __import__("re").match(r"^(\d{2}):(\d{2})$", raw)
+    m = re.match(r"^(\d{1,2}):(\d{2})$", raw)
     if not m:
         return None
     hh = int(m.group(1))
     mm = int(m.group(2))
-    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+    if not (0 <= mm <= 59):
         return None
-    if mm % 15 != 0:
+    return hh, mm
+
+
+def _notif_time_validation_error(hh: int, mm: int) -> str | None:
+    """None si valide, sinon message d'erreur court pour l'utilisateur."""
+    if not (0 <= hh <= 23):
+        return "L'heure doit être entre 00 et 23 (horloge 24 h)."
+    if mm not in (0, 15, 30, 45):
+        return "Les minutes doivent être 00, 15, 30 ou 45."
+    return None
+
+
+def _parse_notif_time_input(text: str) -> str | None:
+    parts = _parse_notif_time_parts(text)
+    if parts is None:
+        return None
+    hh, mm = parts
+    if _notif_time_validation_error(hh, mm):
         return None
     return f"{hh:02d}:{mm:02d}"
+
+
+async def _handle_heure_notif_standalone_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, text: str
+) -> None:
+    """Suite à /heure_notif : saisie de l'heure puis confirmation par boutons."""
+    if context.user_data.get("heure_notif_flow") == "await_confirm":
+        await update.message.reply_text(
+            "Utilise les boutons <b>Oui</b> / <b>Non</b> sous le message précédent, "
+            "ou envoie <b>/heure_notif</b> pour recommencer.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    parts = _parse_notif_time_parts(text)
+    if parts is None:
+        await update.message.reply_text(
+            "Je n'ai pas compris l'heure. Envoie par exemple <b>07:30</b>, <b>9h15</b> ou <b>2145</b>.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    hh, mm = parts
+    verr = _notif_time_validation_error(hh, mm)
+    if verr:
+        await update.message.reply_text(verr)
+        return
+    value = f"{hh:02d}:{mm:02d}"
+    context.user_data["heure_notif_pending"] = value
+    context.user_data["heure_notif_flow"] = "await_confirm"
+    await update.message.reply_text(
+        f"Confirmer <b>{value}</b> comme heure quotidienne des notifications ?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Oui", callback_data=f"hnf:y:{hh:02d}{mm:02d}"),
+                    InlineKeyboardButton("Non", callback_data="hnf:n"),
+                ],
+            ]
+        ),
+    )
 
 
 def _format_finance_block_html(fin: str) -> str:
@@ -632,6 +689,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not text or text.startswith("/"):
         return
 
+    if context.user_data.get("heure_notif_flow") in ("await_input", "await_confirm"):
+        await _handle_heure_notif_standalone_text(update, context, text=text)
+        return
+
     if await _handle_segment_destination_query(update, context):
         return
     if await _handle_segment_line_direction_text(update, context):
@@ -721,10 +782,18 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
     if step == "await_notif_time":
-        value = _parse_notif_time_input(text)
-        if value is None:
-            await update.message.reply_text("Format invalide. Exemple attendu: 07:30 (minutes 00/15/30/45).")
+        parts = _parse_notif_time_parts(text)
+        if parts is None:
+            await update.message.reply_text(
+                "Format non reconnu. Exemples : 07:30, 22h45, 0900 (minutes 00, 15, 30 ou 45)."
+            )
             return
+        hh, mm = parts
+        verr = _notif_time_validation_error(hh, mm)
+        if verr:
+            await update.message.reply_text(verr)
+            return
+        value = f"{hh:02d}:{mm:02d}"
         db.set_notif_time(chat_id, value)
         _setup_finish(context)
         await update.message.reply_text(
@@ -1342,12 +1411,51 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await _setup_after_segment_completed(context=context, message=q.message, seg_key=seg_key)
             return
 
-    if data.startswith("notif:"):
-        # notif:HH:MM
-        value = data.split(":", 1)[1]
+    if data.startswith("hnf:"):
+        # hnf:y:HHMM | hnf:n
         db: Db = context.application.bot_data["db"]
+        parts = data.split(":")
+        if len(parts) < 2:
+            await q.answer()
+            return
+        action = parts[1]
+        if action == "n":
+            context.user_data.pop("heure_notif_flow", None)
+            context.user_data.pop("heure_notif_pending", None)
+            try:
+                await q.edit_message_text(
+                    "Annulé. Envoie /heure_notif quand tu veux choisir une heure."
+                )
+            except BadRequest:
+                pass
+            await q.answer()
+            return
+        if action != "y" or len(parts) < 3:
+            await q.answer()
+            return
+        hhmm = parts[2]
+        if len(hhmm) != 4 or not hhmm.isdigit():
+            await q.answer("Réponse invalide.", show_alert=True)
+            return
+        hh, mm = int(hhmm[:2]), int(hhmm[2:])
+        if _notif_time_validation_error(hh, mm):
+            await q.answer("Heure invalide.", show_alert=True)
+            return
+        value = f"{hh:02d}:{mm:02d}"
+        if context.user_data.get("heure_notif_pending") != value:
+            await q.answer("Session expirée : envoie /heure_notif à nouveau.", show_alert=True)
+            return
         db.set_notif_time(chat_id, value)
-        await q.edit_message_text(f"Heure de notification enregistrée: {value}")
+        context.user_data.pop("heure_notif_flow", None)
+        context.user_data.pop("heure_notif_pending", None)
+        try:
+            await q.edit_message_text(
+                f"Heure de notification enregistrée : <b>{value}</b>.",
+                parse_mode=ParseMode.HTML,
+            )
+        except BadRequest:
+            await q.message.reply_text(f"Heure de notification enregistrée : {value}.")
+        await q.answer()
         return
 
     if data.startswith("bonne_nouv:"):
@@ -1362,8 +1470,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if flow and str(flow.get("step") or "") == "await_goodnews_click" and q.message:
             _setup_set_step(context, "await_notif_time")
             await q.message.reply_text(
-                "Heure de notification (HH:MM, multiple de 15), ex: 07:30",
-                reply_markup=ForceReply(selective=True, input_field_placeholder="07:30"),
+                "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
             )
         return
 
@@ -1535,55 +1644,30 @@ async def cmd_primdebug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text("\n".join(lines))
 
 
-def _build_notif_time_keyboard() -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
-    hours = 6
-    minutes = 30
-    while (hours < 9) or (hours == 9 and minutes <= 30):
-        label = f"{hours:02d}h{minutes:02d}"
-        value = f"{hours:02d}:{minutes:02d}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"notif:{value}")])
-        minutes += 15
-        if minutes >= 60:
-            minutes = 0
-            hours += 1
-    return InlineKeyboardMarkup(rows)
-
-
 async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Db = context.application.bot_data["db"]
     user = db.get_user(update.effective_chat.id)
     if not user:
         await update.message.reply_text("Faites /start d'abord.")
         return
-    arg = _arg_text(update)
+    arg = _arg_text(update).strip()
     if arg:
-        # Accept a direct time override: "17:00", "17h00", "1700"
-        raw = arg.strip().lower().replace("h", ":").replace(" ", "")
-        if raw.isdigit() and len(raw) in (3, 4):
-            # 700 -> 07:00, 1700 -> 17:00
-            raw = raw.zfill(4)
-            raw = f"{raw[0:2]}:{raw[2:4]}"
-        m = __import__("re").match(r"^(\\d{2}):(\\d{2})$", raw)
-        if not m:
-            await update.message.reply_text("Format invalide. Utilise par ex: /heure_notif 17:00")
-            return
-        hh = int(m.group(1))
-        mm = int(m.group(2))
-        if not (0 <= hh <= 23 and 0 <= mm <= 59):
-            await update.message.reply_text("Heure invalide. Format attendu: HH:MM")
-            return
-        if mm % 15 != 0:
-            await update.message.reply_text("Minute invalide. Doit être multiple de 15 (ex: 17:00, 17:15).")
-            return
-        value = f"{hh:02d}:{mm:02d}"
-        db.set_notif_time(update.effective_chat.id, value)
-        await update.message.reply_text(f"Heure de notification enregistrée: {value}")
-        return
+        await update.message.reply_text(
+            "Envoie seulement <b>/heure_notif</b> (sans heure sur la même ligne), "
+            "puis tape l'heure dans le <b>message suivant</b>.",
+            parse_mode=ParseMode.HTML,
+        )
+
+    context.user_data["heure_notif_flow"] = "await_input"
+    context.user_data.pop("heure_notif_pending", None)
 
     await update.message.reply_text(
-        "Choisis l’heure de notification (via boutons) ou donne-la en argument: /heure_notif 17:00",
-        reply_markup=_build_notif_time_keyboard(),
+        "À quelle heure veux-tu recevoir la notification chaque jour ?\n\n"
+        "Réponds avec l'heure en <b>HH:MM</b> (24 h). Les minutes doivent être "
+        "<b>00</b>, <b>15</b>, <b>30</b> ou <b>45</b>.\n"
+        "Exemples : <code>07:00</code>, <code>12:30</code>, <code>22:45</code> — toute heure de la journée.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
     )
 
 

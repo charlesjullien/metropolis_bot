@@ -39,6 +39,9 @@ class Config:
     good_news_rss_url: str | None
     # False sur PythonAnywhere sauf GOOD_NEWS_USE_LEMEDIAPOSITIF=1 (Internet sortant illimité)
     good_news_try_lemediapositif: bool
+    # Proxy Le Média Positif (Vercel) : OpenAPI Bearer, JSON {title, url}
+    goodnews_api_url: str
+    goodnews_swagger_token: str | None
 
 
 def load_config() -> Config:
@@ -63,6 +66,9 @@ def load_config() -> Config:
 
     good_news_rss = (getenv("GOOD_NEWS_RSS_URL") or "").strip() or None
 
+    goodnews_token = (getenv("GOODNEWS_SWAGGER_AUTH_TOKEN") or "").strip() or None
+    goodnews_url = (getenv("GOODNEWS_API_URL") or "").strip() or "https://metropolis-swagger.vercel.app/getGoodNewsOfTheDay"
+
     return Config(
         telegram_bot_token=token,
         bot_timezone=tz,
@@ -72,5 +78,7 @@ def load_config() -> Config:
         bot_admin_telegram_id=bot_admin_telegram_id,
         good_news_rss_url=good_news_rss,
         good_news_try_lemediapositif=_good_news_try_lemediapositif(),
+        goodnews_api_url=goodnews_url,
+        goodnews_swagger_token=goodnews_token,
     )
 

@@ -18,24 +18,32 @@ LOG = logging.getLogger("tgworkbot.news")
 # Flux RSS : beaucoup moins de données que la page catégorie → souvent ok là où le HTML échoue (proxy PA, timeouts).
 LM_POSITIF_RSS_URL = "https://lemediapositif.com/category/nos-articles/feed/"
 LM_POSITIF_LIST_URL = "https://lemediapositif.com/category/nos-articles/"
-# Repli RSS accessibles depuis PythonAnywhere gratuit (whitelist *.ec.europa.eu, wikipedia.org, etc.).
-# Ordre : français / actualité d’abord, puis contenu plus « positif » côté env., puis culture, stats.
-_PUBLIC_RSS_FALLBACKS: tuple[tuple[str, str], ...] = (
-    (
-        "https://ec.europa.eu/commission/presscorner/api/rss?language=fr",
-        "[Commission européenne] ",
-    ),
-    (
-        "https://environment.ec.europa.eu/node/92/rss_en?prefLang=fr",
-        "[Environnement UE] ",
-    ),
+# Repli si l’API Métropolis / RSS perso / scrape LM échouent (whitelist PA typique).
+_PUBLIC_RSS_FALLBACKS: tuple[tuple[str, str, str], ...] = (
     (
         "https://fr.wikipedia.org/w/api.php?action=featuredfeed&feed=featured&feedformat=rss&language=fr",
         "[Wikipédia] ",
+        "rss",
     ),
     (
-        "https://ec.europa.eu/eurostat/api/dissemination/catalogue/rss/fr/statistics-update.rss",
-        "[Eurostat] ",
+        "https://commons.wikimedia.org/w/api.php?action=featuredfeed&feed=potd&feedformat=rss&language=fr",
+        "[Wikimedia Commons] ",
+        "rss",
+    ),
+    (
+        "https://apod.nasa.gov/apod.rss",
+        "[NASA APOD] ",
+        "apod",
+    ),
+    (
+        "https://www.gutenberg.org/cache/epub/feeds/today.rss",
+        "[Gutenberg] ",
+        "rss",
+    ),
+    (
+        "https://blog.khanacademy.org/feed/",
+        "[Khan Academy] ",
+        "rss",
     ),
 )
 
@@ -126,6 +134,64 @@ def _parse_first_rss_item(body: str) -> tuple[str | None, str | None, str | None
     return title, url, None
 
 
+def _parse_first_apod_rss_item(body: str) -> tuple[str | None, str | None, str | None]:
+    """APOD : <title> souvent vide ; alt de l’image ou extrait de <description>."""
+    m = re.search(r"<item\b[^>]*>(.*?)</item>", body, re.IGNORECASE | re.DOTALL)
+    if not m:
+        return None, None, "RSS_NO_ITEM"
+    block = m.group(1)
+    lm = re.search(r"<link\b[^>]*>\s*([^<\s]+)\s*</link>", block, re.IGNORECASE)
+    if not lm:
+        return None, None, "RSS_PARSE_INCOMPLETE"
+    url = lm.group(1).strip()
+    alt_m = re.search(r'alt="([^"]*)"', block)
+    title: str | None = None
+    if alt_m and alt_m.group(1).strip():
+        title = html_module.unescape(alt_m.group(1).strip())
+    if not title:
+        dm = re.search(r"<description\b[^>]*>(.*?)</description>", block, re.IGNORECASE | re.DOTALL)
+        if dm:
+            raw = html_module.unescape(re.sub(r"<[^>]+>", " ", dm.group(1)))
+            title = re.sub(r"\s+", " ", raw).strip()[:240] or None
+    if not title:
+        title = "Astronomy Picture of the Day"
+    return title, url, None
+
+
+async def _fetch_goodnews_metropolis_swagger(
+    *, client: httpx.AsyncClient, cfg: Config, max_attempts: int
+) -> tuple[str | None, str | None, str | None]:
+    """
+    GET JSON {title, url} avec Bearer (voir OpenAPI).
+    Retourne (titre, url, code_erreur). code_erreur None = succès.
+    """
+    if not cfg.goodnews_swagger_token:
+        return None, None, None
+    headers = {
+        "Authorization": f"Bearer {cfg.goodnews_swagger_token}",
+        "Accept": "application/json",
+        "User-Agent": _HTTP_HEADERS["User-Agent"],
+    }
+    r, err = await _get_with_retries(
+        client,
+        url=cfg.goodnews_api_url,
+        headers=headers,
+        max_attempts=max_attempts,
+    )
+    if r is None:
+        return None, None, err or "REQUEST_ERROR"
+    try:
+        data = r.json()
+    except ValueError:
+        LOG.warning("good_news API: réponse non-JSON")
+        return None, None, "JSON_ERROR"
+    title = str(data.get("title") or "").strip()
+    art_url = str(data.get("url") or "").strip()
+    if not title or not art_url:
+        return None, None, "API_BAD_PAYLOAD"
+    return title, art_url, None
+
+
 async def _get_with_retries(
     client: httpx.AsyncClient,
     *,
@@ -169,10 +235,18 @@ async def fetch_good_news_article(
     """
     Retourne (titre, url, code_erreur). Si code_erreur est non None, ignorer titre/url.
 
-    Ordre : GOOD_NEWS_RSS_URL (optionnel) → Le Média Positif (hors PythonAnywhere par défaut)
-    → flux publics RSS (Commission UE, environnement UE, Wikipédia « à la une », Eurostat).
+    Ordre : API Métropolis (Bearer) si GOODNEWS_SWAGGER_AUTH_TOKEN → GOOD_NEWS_RSS_URL
+    → scrape Le Média Positif (hors PA par défaut) → flux RSS publics (repli).
     """
     last_err: str | None = None
+
+    api_title, api_url, api_err = await _fetch_goodnews_metropolis_swagger(
+        client=client, cfg=cfg, max_attempts=min(3, max_attempts)
+    )
+    if api_title and api_url:
+        return api_title, api_url, None
+    if api_err is not None:
+        last_err = api_err
 
     if cfg.good_news_rss_url:
         r0, e0 = await _get_with_retries(
@@ -222,7 +296,7 @@ async def fetch_good_news_article(
 
     # Peu de tentatives par URL (éviter 429 côté serveurs publics).
     fb_attempts = min(2, max_attempts)
-    for fb_url, prefix in _PUBLIC_RSS_FALLBACKS:
+    for fb_url, prefix, kind in _PUBLIC_RSS_FALLBACKS:
         rfb, err_fb = await _get_with_retries(
             client,
             url=fb_url,
@@ -232,7 +306,10 @@ async def fetch_good_news_article(
         last_err = err_fb or last_err
         if rfb is None:
             continue
-        title, art_url, parse_err = _parse_first_rss_item(rfb.text)
+        if kind == "apod":
+            title, art_url, parse_err = _parse_first_apod_rss_item(rfb.text)
+        else:
+            title, art_url, parse_err = _parse_first_rss_item(rfb.text)
         if not parse_err and title and art_url:
             return f"{prefix}{title}", art_url, None
         if parse_err:
