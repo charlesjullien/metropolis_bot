@@ -26,8 +26,8 @@ class UserPrefs:
     notif_time: str | None
     # Last sent notification time key (format "YYYY-MM-DD HH:MM")
     last_notif_sent_key: str | None
-    # Whether to include "bonne nouvelle" in the notification
-    recevoir_bonne_nouvelle: bool
+    # Inclure l’extrait d’actu du jour dans la notification
+    recevoir_news_du_jour: bool
     # Selected news category: "tech" | "sport" | "science"
     news_category: str | None
     # Comma-separated finance keys: sp500,cac40,btc,gold
@@ -63,7 +63,7 @@ class Db:
                     segments_json TEXT,
                     notif_time TEXT,
                     last_notif_sent_key TEXT,
-                    recevoir_bonne_nouvelle INTEGER,
+                    recevoir_news_du_jour INTEGER,
                     news_category TEXT,
                     finance_selection TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
@@ -74,6 +74,15 @@ class Db:
 
             # Lightweight migrations for existing DBs
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "recevoir_news_du_jour" not in cols:
+                if "recevoir_bonne_nouvelle" in cols:
+                    conn.execute(
+                        "ALTER TABLE users RENAME COLUMN recevoir_bonne_nouvelle TO recevoir_news_du_jour"
+                    )
+                else:
+                    conn.execute("ALTER TABLE users ADD COLUMN recevoir_news_du_jour INTEGER")
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+
             def add_col(name: str, ddl: str) -> None:
                 if name not in cols:
                     conn.execute(f"ALTER TABLE users ADD COLUMN {ddl}")
@@ -86,7 +95,6 @@ class Db:
             add_col("segments_json", "segments_json TEXT")
             add_col("notif_time", "notif_time TEXT")
             add_col("last_notif_sent_key", "last_notif_sent_key TEXT")
-            add_col("recevoir_bonne_nouvelle", "recevoir_bonne_nouvelle INTEGER")
             add_col("news_category", "news_category TEXT")
             add_col("finance_selection", "finance_selection TEXT")
 
@@ -220,7 +228,7 @@ class Db:
             segments_json=row["segments_json"],
             notif_time=row["notif_time"],
             last_notif_sent_key=row["last_notif_sent_key"],
-            recevoir_bonne_nouvelle=bool(row["recevoir_bonne_nouvelle"]) if "recevoir_bonne_nouvelle" in row.keys() else False,
+            recevoir_news_du_jour=_row_bool_news_du_jour(row),
             news_category=row["news_category"] if "news_category" in row.keys() else None,
             finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
         )
@@ -244,7 +252,7 @@ class Db:
                 segments_json=row["segments_json"],
                 notif_time=row["notif_time"],
                 last_notif_sent_key=row["last_notif_sent_key"],
-                recevoir_bonne_nouvelle=bool(row["recevoir_bonne_nouvelle"]) if "recevoir_bonne_nouvelle" in row.keys() else False,
+                recevoir_news_du_jour=_row_bool_news_du_jour(row),
                 news_category=row["news_category"] if "news_category" in row.keys() else None,
                 finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
             )

@@ -13,9 +13,9 @@ class Config:
     enable_internal_notif_scheduler: bool
     # Telegram user id (numeric) allowed to run /purge_db YES (full DB wipe)
     bot_admin_telegram_id: int | None
-    # Proxy Le Média Positif (Vercel) : OpenAPI Bearer, JSON {title, url}
-    goodnews_api_url: str
-    goodnews_swagger_token: str | None
+    # Actu du jour (Vercel Métropolis) : OpenAPI Bearer, JSON {title, url}. Variables d’env : GOODNEWS_*.
+    daily_news_api_url: str
+    daily_news_swagger_token: str | None
     # Repli : https://newsapi.org (top-headlines France)
     newsapiorg_key: str | None
 
@@ -40,8 +40,8 @@ def load_config() -> Config:
         except ValueError:
             bot_admin_telegram_id = None
 
-    goodnews_token = (getenv("GOODNEWS_SWAGGER_AUTH_TOKEN") or "").strip() or None
-    goodnews_url = (getenv("GOODNEWS_API_URL") or "").strip() or "https://metropolis-swagger.vercel.app/getGoodNewsOfTheDay"
+    daily_news_token = (getenv("GOODNEWS_SWAGGER_AUTH_TOKEN") or "").strip() or None
+    daily_news_url = (getenv("GOODNEWS_API_URL") or "").strip() or "https://metropolis-swagger.vercel.app/getGoodNewsOfTheDay"
     newsapi_key = (getenv("NEWSAPIORG_KEY") or "").strip() or None
 
     return Config(
@@ -51,7 +51,7 @@ def load_config() -> Config:
         db_path=db_path,
         enable_internal_notif_scheduler=enable_internal_notif_scheduler,
         bot_admin_telegram_id=bot_admin_telegram_id,
-        goodnews_api_url=goodnews_url,
-        goodnews_swagger_token=goodnews_token,
+        daily_news_api_url=daily_news_url,
+        daily_news_swagger_token=daily_news_token,
         newsapiorg_key=newsapi_key,
     )
