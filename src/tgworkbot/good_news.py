@@ -76,10 +76,16 @@ def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
         art_url = str(a.get("url") or "").strip()
         if not title or not art_url:
             continue
-        if title.lower().startswith("[removed]"):
+        tl = title.lower()
+        if tl.startswith("[removed]") or "removed at publishers request" in tl:
             continue
         return title, art_url
     return None, None
+
+
+def _newsapi_build_url(endpoint: str, api_key: str, **params: str) -> str:
+    q = urlencode({**params, "apiKey": api_key})
+    return f"https://newsapi.org/v2/{endpoint}?{q}"
 
 
 async def _get_with_retries(
@@ -129,44 +135,84 @@ async def _fetch_newsapi_fr_article(
     *, client: httpx.AsyncClient, cfg: Config, max_attempts: int
 ) -> tuple[str | None, str | None, str | None]:
     """
-    Top headlines France.
-    https://newsapi.org/docs/endpoints/top-headlines
+    France : d’abord top-headlines, puis everything en français (si le premier ne donne rien d’exploitable).
+    Le plan gratuit peut renvoyer des titres [Removed] ou des listes vides — on enchaîne les stratégies.
     """
     if not cfg.newsapiorg_key:
         return None, None, None
-    q = urlencode(
-        {
-            "country": "fr",
-            "pageSize": "20",
-            "apiKey": cfg.newsapiorg_key,
-        }
-    )
-    url = f"https://newsapi.org/v2/top-headlines?{q}"
+
+    key = cfg.newsapiorg_key
     headers = {
         "Accept": "application/json",
         "User-Agent": _HTTP_HEADERS["User-Agent"],
     }
-    r, err = await _get_with_retries(
-        client,
-        url=url,
-        headers=headers,
-        max_attempts=max_attempts,
-        url_for_log="https://newsapi.org/v2/top-headlines?country=fr&pageSize=20&apiKey=***",
-    )
-    if r is None:
-        return None, None, err or "REQUEST_ERROR"
-    try:
-        data = r.json()
-    except ValueError:
-        return None, None, "JSON_ERROR"
-    if data.get("status") == "error":
-        msg = data.get("message") or data.get("code") or "NEWSAPI_ERROR"
-        LOG.warning("good_news NewsAPI: %s", msg)
-        return None, None, "NEWSAPI_ERROR"
-    title, art_url = _first_usable_newsapi_article(data)
-    if not title or not art_url:
-        return None, None, "NEWSAPI_NO_ARTICLE"
-    return title, art_url, None
+
+    attempts: list[tuple[str, str, str]] = [
+        (
+            "top-headlines",
+            _newsapi_build_url("top-headlines", key, country="fr", pageSize="100"),
+            "top-headlines country=fr pageSize=100",
+        ),
+        (
+            "everything",
+            _newsapi_build_url(
+                "everything",
+                key,
+                q="France",
+                language="fr",
+                sortBy="publishedAt",
+                pageSize="50",
+            ),
+            "everything q=France language=fr",
+        ),
+        (
+            "everything",
+            _newsapi_build_url(
+                "everything",
+                key,
+                q="actualité",
+                language="fr",
+                sortBy="publishedAt",
+                pageSize="50",
+            ),
+            "everything q=actualité language=fr",
+        ),
+    ]
+
+    last_err: str | None = None
+    for _name, url, log_label in attempts:
+        r, err = await _get_with_retries(
+            client,
+            url=url,
+            headers=headers,
+            max_attempts=max_attempts,
+            url_for_log=f"https://newsapi.org/v2/{log_label}&apiKey=***",
+        )
+        if r is None:
+            last_err = err or last_err
+            continue
+        try:
+            data = r.json()
+        except ValueError:
+            last_err = "JSON_ERROR"
+            continue
+        if data.get("status") == "error":
+            msg = data.get("message") or data.get("code") or "NEWSAPI_ERROR"
+            LOG.warning("good_news NewsAPI (%s): %s", log_label, msg)
+            last_err = "NEWSAPI_ERROR"
+            continue
+        total = data.get("totalResults")
+        LOG.info(
+            "good_news NewsAPI %s: totalResults=%s articles_len=%s",
+            log_label,
+            total,
+            len(data.get("articles") or []) if isinstance(data.get("articles"), list) else "?",
+        )
+        title, art_url = _first_usable_newsapi_article(data)
+        if title and art_url:
+            return title, art_url, None
+
+    return None, None, last_err or "NEWSAPI_NO_ARTICLE"
 
 
 async def _fetch_goodnews_metropolis_swagger(
