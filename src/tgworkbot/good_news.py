@@ -101,14 +101,44 @@ _BAD_TITLE_FOR_BONNE_NOUVELLE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# People / JT replay / rubriques souvent sans intérêt pour une « bonne nouvelle ».
+_SOFT_OR_TABLOID_TITLE = re.compile(
+    r"""
+    \b(?:chanteur|chanteuse|people|télé-?réalité|téléréalité|influenceur|influenceuse)\b
+    | \bsur scène\b
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Segments d’URL typiques des rediffusions JT, people, ciné (pas de filtre « thème » natif côté API).
+_LOW_SIGNAL_URL_MARKERS: tuple[str, ...] = (
+    "/replay-jt/",
+    "/replay-jt",
+    "/replay/",
+    "/people/",
+    "/people-",
+    "/cinema/",
+    "/cinéma/",
+    "/spectacles/",
+    "/television/",
+    "/télévision/",
+    "/stars/",
+    "/celebrites/",
+    "/célébrités/",
+)
+
 
 def _title_or_url_unsuitable_for_bonne_nouvelle(title: str, art_url: str) -> bool:
-    """True si le titre ou l’URL ne convient pas au libellé « bonne nouvelle » (NewsAPI)."""
+    """True si le titre ou l’URL ne convient pas au libellé « bonne nouvelle » (toutes sources)."""
     tl = title.lower()
     ul = art_url.lower()
     if "/breves/" in ul or "/breve/" in ul:
         return True
+    if any(m in ul for m in _LOW_SIGNAL_URL_MARKERS):
+        return True
     if _BAD_TITLE_FOR_BONNE_NOUVELLE.search(tl):
+        return True
+    if _SOFT_OR_TABLOID_TITLE.search(tl):
         return True
     return False
 
@@ -188,8 +218,12 @@ async def _fetch_newsapi_fr_article(
     *, client: httpx.AsyncClient, cfg: Config, max_attempts: int
 ) -> tuple[str | None, str | None, str | None]:
     """
-    France : d’abord top-headlines, puis everything en français (si le premier ne donne rien d’exploitable).
-    Le plan gratuit peut renvoyer des titres [Removed] ou des listes vides — on enchaîne les stratégies.
+    France : d’abord top-headlines par rubrique, puis everything avec requêtes thématiques.
+
+    NewsAPI ne propose pas de « sentiment » ni de thème fin : on combine
+    ``category`` (top-headlines), ``q`` (mots-clés / AND OR NOT, max 500 car.),
+    et optionnellement ``domains`` / ``excludeDomains`` (liste de domaines, tout-venant).
+    Voir https://newsapi.org/docs/endpoints/everything
     """
     if not cfg.newsapiorg_key:
         return None, None, None
@@ -225,8 +259,52 @@ async def _fetch_newsapi_fr_article(
         ),
         (
             "top-headlines",
+            _newsapi_build_url(
+                "top-headlines", key, country="fr", category="business", pageSize="100"
+            ),
+            "top-headlines country=fr category=business pageSize=100",
+        ),
+        (
+            "top-headlines",
             _newsapi_build_url("top-headlines", key, country="fr", pageSize="100"),
             "top-headlines country=fr pageSize=100",
+        ),
+        # Requêtes ciblées avant les requêtes trop larges (people, replay, etc.).
+        (
+            "everything",
+            _newsapi_build_url(
+                "everything",
+                key,
+                q="découverte scientifique",
+                language="fr",
+                sortBy="publishedAt",
+                pageSize="50",
+            ),
+            "everything q=découverte scientifique language=fr",
+        ),
+        (
+            "everything",
+            _newsapi_build_url(
+                "everything",
+                key,
+                q="recherche innovation",
+                language="fr",
+                sortBy="publishedAt",
+                pageSize="50",
+            ),
+            "everything q=recherche innovation language=fr",
+        ),
+        (
+            "everything",
+            _newsapi_build_url(
+                "everything",
+                key,
+                q="espace astronomie",
+                language="fr",
+                sortBy="publishedAt",
+                pageSize="50",
+            ),
+            "everything q=espace astronomie language=fr",
         ),
         (
             "everything",
@@ -318,6 +396,9 @@ async def _fetch_goodnews_metropolis_swagger(
     art_url = str(data.get("url") or "").strip()
     if not title or not art_url:
         return None, None, "API_BAD_PAYLOAD"
+    if _title_or_url_unsuitable_for_bonne_nouvelle(title, art_url):
+        LOG.info("good_news API Métropolis: article exclu par filtre titre/URL")
+        return None, None, None
     return title, art_url, None
 
 
@@ -338,6 +419,7 @@ async def fetch_good_news_article(
     )
     if api_title and api_url:
         return api_title, api_url, None
+    # Réponse filtrée (people, replay…) : pas d’erreur HTTP, on tente NewsAPI.
     if api_err is not None:
         last_err = api_err
 
