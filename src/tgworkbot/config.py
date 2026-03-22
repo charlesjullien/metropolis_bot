@@ -13,6 +13,8 @@ class Config:
     enable_internal_notif_scheduler: bool
     # Telegram user id (numeric) allowed to run /purge_db YES (full DB wipe)
     bot_admin_telegram_id: int | None
+    # RSS 2.0 (URL https), ex. raw.githubusercontent.com/.../feed.xml — PythonAnywhere gratuit bloque lemediapositif.com
+    good_news_rss_url: str | None
 
 
 def load_config() -> Config:
@@ -35,6 +37,8 @@ def load_config() -> Config:
         except ValueError:
             bot_admin_telegram_id = None
 
+    good_news_rss = (getenv("GOOD_NEWS_RSS_URL") or "").strip() or None
+
     return Config(
         telegram_bot_token=token,
         bot_timezone=tz,
@@ -42,5 +46,6 @@ def load_config() -> Config:
         db_path=db_path,
         enable_internal_notif_scheduler=enable_internal_notif_scheduler,
         bot_admin_telegram_id=bot_admin_telegram_id,
+        good_news_rss_url=good_news_rss,
     )
 
