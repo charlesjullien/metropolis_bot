@@ -7,6 +7,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
+def _row_bool_news_du_jour(row: sqlite3.Row) -> bool:
+    if "recevoir_news_du_jour" in row.keys():
+        return bool(row["recevoir_news_du_jour"])
+    if "recevoir_bonne_nouvelle" in row.keys():
+        return bool(row["recevoir_bonne_nouvelle"])
+    return False
+
+
 @dataclass(frozen=True)
 class UserPrefs:
     chat_id: int
@@ -320,7 +328,7 @@ class Db:
                     chat_id, depart, direction, depart_sa_id, depart_sa_label,
                     arrivee_sa_id, arrivee_sa_label, allowed_modes,
                     meteo_label, meteo_lat, meteo_lon, segments_json,
-                    notif_time, last_notif_sent_key, recevoir_bonne_nouvelle,
+                    notif_time, last_notif_sent_key, recevoir_news_du_jour,
                     news_category, finance_selection
                 ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL)
                 ON CONFLICT(chat_id) DO UPDATE SET
@@ -337,7 +345,7 @@ class Db:
                     segments_json=NULL,
                     notif_time=NULL,
                     last_notif_sent_key=NULL,
-                    recevoir_bonne_nouvelle=0,
+                    recevoir_news_du_jour=0,
                     news_category=NULL,
                     finance_selection=NULL,
                     updated_at=datetime('now')
@@ -357,13 +365,13 @@ class Db:
                 (chat_id, finance_selection),
             )
 
-    def set_recevoir_bonne_nouvelle(self, chat_id: int, enabled: bool) -> None:
+    def set_recevoir_news_du_jour(self, chat_id: int, enabled: bool) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO users(chat_id, recevoir_bonne_nouvelle) VALUES (?, ?)
+                INSERT INTO users(chat_id, recevoir_news_du_jour) VALUES (?, ?)
                 ON CONFLICT(chat_id) DO UPDATE SET
-                    recevoir_bonne_nouvelle=excluded.recevoir_bonne_nouvelle,
+                    recevoir_news_du_jour=excluded.recevoir_news_du_jour,
                     updated_at=datetime('now')
                 """.strip(),
                 (chat_id, 1 if enabled else 0),

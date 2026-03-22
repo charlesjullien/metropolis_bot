@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Teste l’accès HTTP depuis PythonAnywhere (whitelist proxy).
-# Usage :  bash scripts/pa_whitelist_good_news_urls.sh
+# Usage :  bash scripts/pa_whitelist_daily_news_urls.sh
 
 set -u
 MAX_SEC="${MAX_SEC:-25}"

@@ -198,15 +198,15 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
         except Exception:
             LOG.exception("finance snapshot failed for %s", user.chat_id)
 
-    if user.recevoir_bonne_nouvelle:
+    if user.recevoir_news_du_jour:
         try:
-            from tgworkbot.good_news import get_good_news_text_for_today
+            from tgworkbot.daily_news import get_daily_news_text_for_today
 
-            news = await get_good_news_text_for_today(cfg=cfg, db=db)
+            news = await get_daily_news_text_for_today(cfg=cfg, db=db)
             if news:
-                parts.append("<b><u>Bonne nouvelle du jour :</u></b>\n" + escape_telegram_html(news))
+                parts.append("<b><u>News du jour :</u></b>\n" + escape_telegram_html(news))
         except Exception:
-            LOG.exception("good_news failed for %s", user.chat_id)
+            LOG.exception("daily_news failed for %s", user.chat_id)
 
     if not parts:
         return None

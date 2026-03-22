@@ -13,7 +13,7 @@ from tgworkbot.config import Config, load_config
 from tgworkbot.db import Db
 
 
-LOG = logging.getLogger("tgworkbot.news")
+LOG = logging.getLogger("tgworkbot.daily_news")
 
 _HTTP_NO_RETRY_STATUS = frozenset({401, 403, 404, 429})
 _HTTP_HEADERS = {
@@ -63,8 +63,8 @@ def _fetch_exception_code(exc: BaseException) -> str:
     return type(exc).__name__.upper()
 
 
-# Repli NewsAPI : éviter titres clairement négatifs / anxiogènes pour une « bonne nouvelle ».
-_BAD_TITLE_FOR_BONNE_NOUVELLE = re.compile(
+# Repli NewsAPI : éviter titres clairement négatifs / anxiogènes pour la notif actu.
+_BAD_TITLE_FILTER = re.compile(
     r"""
     \b(?:morts?|décès|décédés?|décédée|décédé)\b
     | \b(?:inquiétudes?)\b
@@ -101,7 +101,7 @@ _BAD_TITLE_FOR_BONNE_NOUVELLE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
-# People / JT replay / rubriques souvent sans intérêt pour une « bonne nouvelle ».
+# People / JT replay / rubriques souvent sans intérêt pour cette notif.
 _SOFT_OR_TABLOID_TITLE = re.compile(
     r"""
     \b(?:chanteur|chanteuse|people|télé-?réalité|téléréalité|influenceur|influenceuse)\b
@@ -128,15 +128,15 @@ _LOW_SIGNAL_URL_MARKERS: tuple[str, ...] = (
 )
 
 
-def _title_or_url_unsuitable_for_bonne_nouvelle(title: str, art_url: str) -> bool:
-    """True si le titre ou l’URL ne convient pas au libellé « bonne nouvelle » (toutes sources)."""
+def _title_or_url_unsuitable_for_daily_news(title: str, art_url: str) -> bool:
+    """True si le titre ou l’URL ne convient pas à l’extrait actu (toutes sources)."""
     tl = title.lower()
     ul = art_url.lower()
     if "/breves/" in ul or "/breve/" in ul:
         return True
     if any(m in ul for m in _LOW_SIGNAL_URL_MARKERS):
         return True
-    if _BAD_TITLE_FOR_BONNE_NOUVELLE.search(tl):
+    if _BAD_TITLE_FILTER.search(tl):
         return True
     if _SOFT_OR_TABLOID_TITLE.search(tl):
         return True
@@ -144,7 +144,7 @@ def _title_or_url_unsuitable_for_bonne_nouvelle(title: str, art_url: str) -> boo
 
 
 def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
-    """Premier article avec titre + URL exploitables et ton compatible « bonne nouvelle »."""
+    """Premier article avec titre + URL exploitables après filtrage."""
     if data.get("status") != "ok":
         return None, None
     articles = data.get("articles")
@@ -160,7 +160,7 @@ def _first_usable_newsapi_article(data: dict) -> tuple[str | None, str | None]:
         tl = title.lower()
         if tl.startswith("[removed]") or "removed at publishers request" in tl:
             continue
-        if _title_or_url_unsuitable_for_bonne_nouvelle(title, art_url):
+        if _title_or_url_unsuitable_for_daily_news(title, art_url):
             continue
         return title, art_url
     return None, None
@@ -190,12 +190,12 @@ async def _get_with_retries(
         except httpx.RequestError as e:
             last_code = _fetch_exception_code(e)
             LOG.warning(
-                "good_news GET %s attempt %s/%s: %s", log_target, attempt + 1, max_attempts, e
+                "daily_news GET %s attempt %s/%s: %s", log_target, attempt + 1, max_attempts, e
             )
             if _nonretryable_request_error(e):
                 final = _final_error_code_from_request_error(e, last_code)
                 LOG.info(
-                    "good_news GET %s: %s (pas de nouvelle tentative)", log_target, final
+                    "daily_news GET %s: %s (pas de nouvelle tentative)", log_target, final
                 )
                 return None, final
         except OSError:
@@ -205,7 +205,7 @@ async def _get_with_retries(
                 return r, None
             last_code = f"HTTP_{r.status_code}"
             if r.status_code in _HTTP_NO_RETRY_STATUS:
-                LOG.info("good_news GET %s: %s (arrêt des tentatives)", log_target, last_code)
+                LOG.info("daily_news GET %s: %s (arrêt des tentatives)", log_target, last_code)
                 return None, last_code
 
         if attempt + 1 < max_attempts:
@@ -351,12 +351,12 @@ async def _fetch_newsapi_fr_article(
             continue
         if data.get("status") == "error":
             msg = data.get("message") or data.get("code") or "NEWSAPI_ERROR"
-            LOG.warning("good_news NewsAPI (%s): %s", log_label, msg)
+            LOG.warning("daily_news NewsAPI (%s): %s", log_label, msg)
             last_err = "NEWSAPI_ERROR"
             continue
         total = data.get("totalResults")
         LOG.info(
-            "good_news NewsAPI %s: totalResults=%s articles_len=%s",
+            "daily_news NewsAPI %s: totalResults=%s articles_len=%s",
             log_label,
             total,
             len(data.get("articles") or []) if isinstance(data.get("articles"), list) else "?",
@@ -368,20 +368,20 @@ async def _fetch_newsapi_fr_article(
     return None, None, last_err or "NEWSAPI_NO_ARTICLE"
 
 
-async def _fetch_goodnews_metropolis_swagger(
+async def _fetch_daily_news_metropolis_swagger(
     *, client: httpx.AsyncClient, cfg: Config, max_attempts: int
 ) -> tuple[str | None, str | None, str | None]:
     """GET JSON {title, url} avec Bearer (OpenAPI Métropolis)."""
-    if not cfg.goodnews_swagger_token:
+    if not cfg.daily_news_swagger_token:
         return None, None, None
     headers = {
-        "Authorization": f"Bearer {cfg.goodnews_swagger_token}",
+        "Authorization": f"Bearer {cfg.daily_news_swagger_token}",
         "Accept": "application/json",
         "User-Agent": _HTTP_HEADERS["User-Agent"],
     }
     r, err = await _get_with_retries(
         client,
-        url=cfg.goodnews_api_url,
+        url=cfg.daily_news_api_url,
         headers=headers,
         max_attempts=max_attempts,
     )
@@ -390,19 +390,19 @@ async def _fetch_goodnews_metropolis_swagger(
     try:
         data = r.json()
     except ValueError:
-        LOG.warning("good_news API: réponse non-JSON")
+        LOG.warning("daily_news API: réponse non-JSON")
         return None, None, "JSON_ERROR"
     title = str(data.get("title") or "").strip()
     art_url = str(data.get("url") or "").strip()
     if not title or not art_url:
         return None, None, "API_BAD_PAYLOAD"
-    if _title_or_url_unsuitable_for_bonne_nouvelle(title, art_url):
-        LOG.info("good_news API Métropolis: article exclu par filtre titre/URL")
+    if _title_or_url_unsuitable_for_daily_news(title, art_url):
+        LOG.info("daily_news API Métropolis: article exclu par filtre titre/URL")
         return None, None, None
     return title, art_url, None
 
 
-async def fetch_good_news_article(
+async def fetch_daily_news_article(
     *, client: httpx.AsyncClient, cfg: Config, max_attempts: int = 4
 ) -> tuple[str | None, str | None, str | None]:
     """
@@ -414,7 +414,7 @@ async def fetch_good_news_article(
     last_err: str | None = None
     n = min(3, max_attempts)
 
-    api_title, api_url, api_err = await _fetch_goodnews_metropolis_swagger(
+    api_title, api_url, api_err = await _fetch_daily_news_metropolis_swagger(
         client=client, cfg=cfg, max_attempts=n
     )
     if api_title and api_url:
@@ -431,12 +431,12 @@ async def fetch_good_news_article(
     if na_err is not None:
         last_err = na_err
 
-    return None, None, last_err or "NO_GOOD_NEWS_SOURCE"
+    return None, None, last_err or "NO_DAILY_NEWS_SOURCE"
 
 
-async def get_good_news_text_for_today(*, cfg=None, db: Db) -> str | None:
+async def get_daily_news_text_for_today(*, cfg=None, db: Db) -> str | None:
     """
-    Retourne le texte « bonne nouvelle » pour aujourd’hui (fuseau bot), cache journalier.
+    Texte d’actu du jour pour aujourd’hui (fuseau bot), cache journalier.
     En cas d’échec : message « Erreur : CODE » (pas de texte de repli arbitraire).
     """
     if cfg is None:
@@ -476,9 +476,9 @@ async def get_good_news_text_for_today(*, cfg=None, db: Db) -> str | None:
         limits=httpx.Limits(max_keepalive_connections=0, max_connections=10),
     ) as client:
         try:
-            headline, url, fetch_err = await fetch_good_news_article(client=client, cfg=cfg)
+            headline, url, fetch_err = await fetch_daily_news_article(client=client, cfg=cfg)
         except Exception as e:
-            LOG.exception("good_news fetch failed")
+            LOG.exception("daily_news fetch failed")
             fetch_err = _fetch_exception_code(e)
 
     if fetch_err:
