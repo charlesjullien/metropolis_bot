@@ -481,6 +481,26 @@ class IdFmPrimNavitiaProvider(TransitProvider):
         realtime_data = await _fetch_realtime_with_retry()
         hints_raw = [str(h).strip() for h in (direction_hints or []) if str(h).strip()]
         legacy_dir = (direction_label or "").strip()
+        runtime_dest_hints: list[str] = []
+        if line_id and destination_stop_area_id:
+            try:
+                runtime_dest_hints = await self.headsings_toward_destination(
+                    stop_area_id=stop_area_id,
+                    line_id=line_id,
+                    destination_stop_area_id=destination_stop_area_id,
+                )
+            except Exception:
+                runtime_dest_hints = []
+        if runtime_dest_hints:
+            seen_hints: set[str] = set()
+            merged_hints: list[str] = []
+            for h in [*runtime_dest_hints, *hints_raw]:
+                key = h.strip().lower()
+                if not key or key in seen_hints:
+                    continue
+                seen_hints.add(key)
+                merged_hints.append(h.strip())
+            hints_raw = merged_hints
         now_local = datetime.now(ZoneInfo("Europe/Paris"))
 
         def _dir_matches(blob_txt: str, label: str) -> bool:
