@@ -88,9 +88,21 @@ def format_departures_block(
 
     bullets: list[str] = []
     for ln in dep_lines:
-        m = re.search(r"\b(\d{1,2}:\d{2})\b", ln or "")
+        raw = ln or ""
+        uses_planning = "[PLANNING]" in raw
+        raw = raw.replace("[PLANNING]", "").strip()
+        m = re.search(r"\b(\d{1,2}:\d{2})\b", raw)
         if m:
-            bullets.append(f"- {m.group(1)}")
+            if uses_planning:
+                suffix = " <b>(planning)</b>" if html else " (planning)"
+                bullets.append(f"- {m.group(1)}{suffix}")
+            else:
+                bullets.append(f"- {m.group(1)}")
         else:
-            bullets.append(f"- {escape_telegram_html(ln)}" if html else f"- {ln}")
+            base = escape_telegram_html(raw) if html else raw
+            if uses_planning:
+                suffix = " <b>(planning)</b>" if html else " (planning)"
+                bullets.append(f"- {base}{suffix}")
+            else:
+                bullets.append(f"- {base}")
     return header + "\n" + "\n".join(bullets)

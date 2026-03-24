@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import html
 import re
@@ -45,10 +46,14 @@ class IdFmPrimNavitiaProvider(TransitProvider):
         *,
         base_url: str = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia",
         coverage: str = "idfm",
+        allow_planning_fallback: bool = True,
+        realtime_departures_retries: int = 2,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.coverage = coverage
+        self.allow_planning_fallback = bool(allow_planning_fallback)
+        self.realtime_departures_retries = max(0, min(5, int(realtime_departures_retries)))
 
     def _enc(self, uri: str) -> str:
         # Navitia URIs contain ":" and must be percent-encoded in path segments
@@ -445,19 +450,40 @@ class IdFmPrimNavitiaProvider(TransitProvider):
         at a given stop_area, optionally filtered by line and direction.
         """
         sa = self._enc(stop_area_id)
-        try:
-            data = await self._get(
-                f"/stop_areas/{sa}/departures",
-                {"depth": "2", "count": str(max(count * 20, 80))},
-            )
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in (400, 404):
-                data = await self._get(
-                    f"/coverage/{self.coverage}/stop_areas/{sa}/departures",
-                    {"depth": "2", "count": str(max(count * 20, 80))},
-                )
-            else:
+        count_param = str(max(count * 20, 80))
+
+        async def _fetch_departures_payload(*, data_freshness: str) -> dict:
+            params = {"depth": "2", "count": count_param, "data_freshness": data_freshness}
+            try:
+                return await self._get(f"/stop_areas/{sa}/departures", params)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (400, 404):
+                    return await self._get(f"/coverage/{self.coverage}/stop_areas/{sa}/departures", params)
                 raise
+
+        async def _fetch_realtime_with_retry() -> dict | None:
+            # Retry on transient API failures and occasional empty payloads.
+            attempts = self.realtime_departures_retries + 1
+            for idx in range(attempts):
+                try:
+                    payload = await _fetch_departures_payload(data_freshness="realtime")
+                    if payload.get("departures"):
+                        return payload
+                    if idx == attempts - 1:
+                        return payload
+                except (httpx.RequestError, httpx.HTTPStatusError):
+                    if idx == attempts - 1:
+                        return None
+                await asyncio.sleep(0.35 * (idx + 1))
+            return None
+
+        data = await _fetch_realtime_with_retry()
+        used_schedule_fallback = False
+        if not data or not data.get("departures"):
+            if not self.allow_planning_fallback:
+                return []
+            data = await _fetch_departures_payload(data_freshness="base_schedule")
+            used_schedule_fallback = True
         hints_raw = [str(h).strip() for h in (direction_hints or []) if str(h).strip()]
         legacy_dir = (direction_label or "").strip()
         now_local = datetime.now(ZoneInfo("Europe/Paris"))
@@ -724,6 +750,8 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 if not desc_parts:
                     continue
                 rendered = " ".join(desc_parts)
+                if used_schedule_fallback:
+                    rendered = f"{rendered} [PLANNING]"
                 if rendered in seen_local:
                     continue
                 seen_local.add(rendered)
@@ -1658,8 +1686,17 @@ class IdFmPrimNavitiaProvider(TransitProvider):
         return TransitStatus(ok=False, headline=headline, details=details)
 
 
-def make_provider(*, idfm_prim_api_key: str | None) -> TransitProvider:
+def make_provider(
+    *,
+    idfm_prim_api_key: str | None,
+    allow_planning_fallback: bool = True,
+    realtime_departures_retries: int = 2,
+) -> TransitProvider:
     if idfm_prim_api_key:
-        return IdFmPrimNavitiaProvider(idfm_prim_api_key)
+        return IdFmPrimNavitiaProvider(
+            idfm_prim_api_key,
+            allow_planning_fallback=allow_planning_fallback,
+            realtime_departures_retries=realtime_departures_retries,
+        )
     return NotConfiguredProvider()
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Final
 from zoneinfo import ZoneInfo
 
+import httpx
 from dotenv import load_dotenv
 from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -806,13 +807,23 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _render_meteo_for_user(*, cfg, user) -> str | None:
     if user.meteo_lat is None or user.meteo_lon is None or not user.meteo_label:
         return None
-    summary = await get_rain_summary_today(
-        label=user.meteo_label,
-        lat=float(user.meteo_lat),
-        lon=float(user.meteo_lon),
-        timezone=cfg.bot_timezone,
-    )
-    return format_rain_summary(summary)
+    try:
+        summary = await get_rain_summary_today(
+            label=user.meteo_label,
+            lat=float(user.meteo_lat),
+            lon=float(user.meteo_lon),
+            timezone=cfg.bot_timezone,
+        )
+        return format_rain_summary(summary)
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code if e.response is not None else "unknown"
+        LOG.warning("meteo unavailable for chat_id=%s (http %s)", getattr(user, "chat_id", "?"), status)
+        if e.response is not None and e.response.status_code == 429:
+            return "🌥️ <b><u>Météo</u></b> — service temporairement indisponible (limite API atteinte), réessaie dans quelques minutes."
+        return "🌥️ <b><u>Météo</u></b> — service temporairement indisponible."
+    except httpx.RequestError:
+        LOG.warning("meteo request failed for chat_id=%s", getattr(user, "chat_id", "?"), exc_info=True)
+        return "🌥️ <b><u>Météo</u></b> — service temporairement indisponible."
 
 
 async def _render_transit_for_user(*, provider, user) -> str | None:
@@ -1936,7 +1947,11 @@ def main() -> None:
     cfg = load_config()
 
     db = Db(cfg.db_path)
-    provider = make_provider(idfm_prim_api_key=cfg.idfm_prim_api_key)
+    provider = make_provider(
+        idfm_prim_api_key=cfg.idfm_prim_api_key,
+        allow_planning_fallback=cfg.allow_planning_fallback,
+        realtime_departures_retries=cfg.realtime_departures_retries,
+    )
 
     app = Application.builder().token(cfg.telegram_bot_token).post_init(_post_init).build()
     app.bot_data["cfg"] = cfg

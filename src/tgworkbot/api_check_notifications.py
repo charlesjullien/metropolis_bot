@@ -214,7 +214,11 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
 
 
 async def check_and_send_notifications(*, cfg) -> dict:
-    provider = make_provider(idfm_prim_api_key=cfg.idfm_prim_api_key)
+    provider = make_provider(
+        idfm_prim_api_key=cfg.idfm_prim_api_key,
+        allow_planning_fallback=cfg.allow_planning_fallback,
+        realtime_departures_retries=cfg.realtime_departures_retries,
+    )
     db = Db(cfg.db_path)
 
     bot = Bot(token=cfg.telegram_bot_token)
