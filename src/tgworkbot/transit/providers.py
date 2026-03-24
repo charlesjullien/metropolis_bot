@@ -477,13 +477,7 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 await asyncio.sleep(0.35 * (idx + 1))
             return None
 
-        data = await _fetch_realtime_with_retry()
-        used_schedule_fallback = False
-        if not data or not data.get("departures"):
-            if not self.allow_planning_fallback:
-                return []
-            data = await _fetch_departures_payload(data_freshness="base_schedule")
-            used_schedule_fallback = True
+        realtime_data = await _fetch_realtime_with_retry()
         hints_raw = [str(h).strip() for h in (direction_hints or []) if str(h).strip()]
         legacy_dir = (direction_label or "").strip()
         now_local = datetime.now(ZoneInfo("Europe/Paris"))
@@ -631,10 +625,15 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 return f"{blob[0:2]}:{blob[2:4]}"
             return ""
 
-        def scan(apply_direction_filter: bool) -> list[str]:
+        def scan(
+            *,
+            payload: dict,
+            apply_direction_filter: bool,
+            used_schedule_fallback: bool,
+        ) -> list[str]:
             seen_local: set[str] = set()
             acc: list[str] = []
-            for dep in (data.get("departures") or []):
+            for dep in (payload.get("departures") or []):
                 if not isinstance(dep, dict):
                     continue
                 di = dep.get("display_informations") or {}
@@ -679,18 +678,40 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                     time_str = dt.get("departure_time") or dt.get("arrival_time") or ""
                     # Try to parse full datetime to compute "dans X minutes"
                     dep_dt = None
-                    dt_candidates = [
+                    # Realtime first. Only include base_* fields when we explicitly
+                    # switched to base_schedule fallback.
+                    dt_candidates: list[object] = [
+                        dep.get("amended_departure_date_time"),
+                        dep.get("amended_departureDateTime"),
+                        dep.get("amended_departure_datetime"),
+                        dep.get("amended_departureDatetime"),
+                        dep.get("departure_date_time"),
+                        dep.get("departureDateTime"),
+                        dep.get("departure_datetime"),
+                        dep.get("departureDatetime"),
+                        dt.get("amended_departure_date_time"),
+                        dt.get("amended_departureDateTime"),
+                        dt.get("amended_departure_datetime"),
+                        dt.get("amended_departureDatetime"),
                         dt.get("departure_date_time"),
                         dt.get("departureDateTime"),
                         dt.get("departure_datetime"),
                         dt.get("departureDatetime"),
                         dt.get("utc_departure_date_time"),
-                        dt.get("base_departure_date_time"),
-                        dt.get("base_departureDateTime"),
-                        dt.get("base_departure_datetime"),
                         dt.get("date_time"),
-                        time_str,
                     ]
+                    if used_schedule_fallback:
+                        dt_candidates.extend(
+                            [
+                                dep.get("base_departure_date_time"),
+                                dep.get("base_departureDateTime"),
+                                dep.get("base_departure_datetime"),
+                                dt.get("base_departure_date_time"),
+                                dt.get("base_departureDateTime"),
+                                dt.get("base_departure_datetime"),
+                            ]
+                        )
+                    dt_candidates.append(time_str)
                     for cand in dt_candidates:
                         dep_dt = self._parse_navitia_datetime(cand)
                         if dep_dt is not None:
@@ -760,7 +781,25 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                     break
             return acc
 
-        return scan(True)
+        realtime_results: list[str] = []
+        if realtime_data and realtime_data.get("departures"):
+            realtime_results = scan(
+                payload=realtime_data,
+                apply_direction_filter=True,
+                used_schedule_fallback=False,
+            )
+            if realtime_results:
+                return realtime_results
+
+        if not self.allow_planning_fallback:
+            return []
+
+        planning_data = await _fetch_departures_payload(data_freshness="base_schedule")
+        return scan(
+            payload=planning_data,
+            apply_direction_filter=True,
+            used_schedule_fallback=True,
+        )
 
     def _mode_bucket(self, physical_mode: str | None, commercial_mode: str | None) -> str | None:
         blob = f"{physical_mode or ''} {commercial_mode or ''}".lower()
