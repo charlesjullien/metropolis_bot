@@ -483,7 +483,7 @@ def historical_event_notification_heading(*, cfg: Config) -> str:
     """Titre du bloc dans les notifications (date calendaire, fuseau du bot)."""
     tz = ZoneInfo(cfg.bot_timezone)
     d = datetime.now(tz).date()
-    label = f"{d.day} {_FR_MONTHS[d.month - 1]} {d.year}"
+    label = f"{d.day} {_FR_MONTHS[d.month - 1]}"
     return f"Événement historique ayant eu lieu un {label}:"
 
 
