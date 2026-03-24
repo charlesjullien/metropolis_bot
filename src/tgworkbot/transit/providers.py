@@ -686,8 +686,7 @@ class IdFmPrimNavitiaProvider(TransitProvider):
             apply_direction_filter: bool,
             used_schedule_fallback: bool,
         ) -> list[str]:
-            seen_local: set[str] = set()
-            acc: list[str] = []
+            rows: list[tuple[datetime, str, str]] = []
             for dep in (payload.get("departures") or []):
                 if not isinstance(dep, dict):
                     continue
@@ -807,10 +806,11 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 if dep_dt_local_cmp is not None and dep_dt_local_cmp < now_local - timedelta(seconds=45):
                     continue
 
+                display_hhmm = ""
                 if dep_dt is not None and dep_dt.tzinfo is not None:
-                    # Prefer absolute time for readability
                     local_hhmm = dep_dt.astimezone(ZoneInfo("Europe/Paris")).strftime("%H:%M")
-                    time_part = f"à {local_hhmm}"
+                    display_hhmm = human_time or local_hhmm
+                    time_part = f"à {display_hhmm}"
 
                     # Suppress departures before estimated resume time
                     if resume_dt_local is not None:
@@ -820,9 +820,16 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 if not time_part:
                     # Fallback: use parsed time string if available
                     if human_time:
+                        display_hhmm = human_time
                         time_part = f"à {human_time}"
                     else:
                         time_part = ""
+                if not display_hhmm:
+                    m_hhmm = re.search(r"\b(\d{1,2}:\d{2})\b", time_part)
+                    if m_hhmm:
+                        hh_i = int(m_hhmm.group(1).split(":")[0])
+                        mm_i = int(m_hhmm.group(1).split(":")[1])
+                        display_hhmm = f"{hh_i:02d}:{mm_i:02d}"
                 mode = di.get("physical_mode") or di.get("commercial_mode") or ""
                 line_code = di.get("code") or di.get("label") or ""
                 desc_parts = [
@@ -840,9 +847,30 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 rendered = " ".join(desc_parts)
                 if used_schedule_fallback:
                     rendered = f"{rendered} [PLANNING]"
-                if rendered in seen_local:
+                sort_dt = dep_dt_local_cmp
+                if sort_dt is None and display_hhmm:
+                    try:
+                        hh_i, mm_i = [int(x) for x in display_hhmm.split(":")]
+                        sort_dt = now_local.replace(hour=hh_i, minute=mm_i, second=0, microsecond=0)
+                        if sort_dt < now_local - timedelta(hours=1):
+                            sort_dt = sort_dt + timedelta(days=1)
+                    except Exception:
+                        sort_dt = None
+                rows.append((sort_dt or (now_local + timedelta(days=2)), rendered, display_hhmm))
+
+            rows.sort(key=lambda x: x[0])
+            seen_hhmm: set[str] = set()
+            seen_rendered: set[str] = set()
+            acc: list[str] = []
+            for _, rendered, hhmm in rows:
+                # Avoid duplicates shown to users (e.g. "17:23" repeated).
+                if hhmm and hhmm in seen_hhmm:
                     continue
-                seen_local.add(rendered)
+                if rendered in seen_rendered:
+                    continue
+                if hhmm:
+                    seen_hhmm.add(hhmm)
+                seen_rendered.add(rendered)
                 acc.append(rendered)
                 if len(acc) >= count:
                     break
