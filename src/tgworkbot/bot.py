@@ -897,6 +897,7 @@ async def cmd_infos_transports(update: Update, context: ContextTypes.DEFAULT_TYP
                 dep_lines = await provider.get_next_departures(  # type: ignore[attr-defined]
                     stop_area_id=sa_id,
                     line_id=line_id,
+                    destination_stop_area_id=seg.get("destination_stop_area_id"),
                     direction_hints=hints if hints else None,
                     direction_label=None if hints else legacy_dir or None,
                     count=3,
@@ -1758,6 +1759,7 @@ async def _render_notification_text_for_user(*, app: Application, user) -> str |
                 dep_lines = await provider.get_next_departures(  # type: ignore[attr-defined]
                     stop_area_id=sa_id,
                     line_id=line_id,
+                    destination_stop_area_id=seg.get("destination_stop_area_id"),
                     direction_hints=hints if hints else None,
                     direction_label=None if hints else legacy_dir or None,
                     count=3,

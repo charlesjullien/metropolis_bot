@@ -441,6 +441,7 @@ class IdFmPrimNavitiaProvider(TransitProvider):
         *,
         stop_area_id: str,
         line_id: str | None = None,
+        destination_stop_area_id: str | None = None,
         direction_label: str | None = None,
         direction_hints: list[str] | None = None,
         count: int = 3,
@@ -511,6 +512,40 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 if _dir_matches(dnorm, h):
                     return True
             return False
+
+        wanted_dest_id = (destination_stop_area_id or "").strip().lower()
+
+        def _departure_matches_destination_id(dep: dict) -> bool:
+            if not wanted_dest_id:
+                return False
+
+            def _collect_ids(obj: object) -> list[str]:
+                out: list[str] = []
+                if isinstance(obj, dict):
+                    maybe_id = obj.get("id")
+                    if isinstance(maybe_id, str) and maybe_id.strip():
+                        out.append(maybe_id.strip().lower())
+                    for v in obj.values():
+                        out.extend(_collect_ids(v))
+                elif isinstance(obj, list):
+                    for it in obj:
+                        out.extend(_collect_ids(it))
+                return out
+
+            # Prefer route/direction areas, but keep a broad fallback to tolerate
+            # shape differences across PRIM products.
+            scoped: list[object] = [
+                dep.get("route"),
+                dep.get("stop_point"),
+                dep.get("display_informations"),
+                dep.get("links"),
+            ]
+            ids: list[str] = []
+            for s in scoped:
+                ids.extend(_collect_ids(s))
+            if not ids:
+                ids = _collect_ids(dep)
+            return wanted_dest_id in set(ids)
 
         labels_for_resume = hints_raw if hints_raw else ([legacy_dir] if legacy_dir else [])
 
@@ -666,12 +701,24 @@ class IdFmPrimNavitiaProvider(TransitProvider):
                 direction = di.get("direction") or di.get("headsign") or di.get("to")
                 direction_str = str(direction).strip() if isinstance(direction, str) else ""
                 if apply_direction_filter:
-                    if hints_raw:
-                        if not direction_str or not _headsign_matches_user_hints(hints_raw, direction_str):
-                            continue
-                    elif legacy_dir:
-                        if not direction_str or not _dir_matches(direction_str, legacy_dir):
-                            continue
+                    if wanted_dest_id:
+                        # For branched lines (RER), keep all missions that truly head
+                        # toward the configured destination stop area.
+                        if not _departure_matches_destination_id(dep):
+                            # Fallback to textual hint if destination IDs are absent.
+                            if hints_raw:
+                                if not direction_str or not _headsign_matches_user_hints(hints_raw, direction_str):
+                                    continue
+                            elif legacy_dir:
+                                if not direction_str or not _dir_matches(direction_str, legacy_dir):
+                                    continue
+                    else:
+                        if hints_raw:
+                            if not direction_str or not _headsign_matches_user_hints(hints_raw, direction_str):
+                                continue
+                        elif legacy_dir:
+                            if not direction_str or not _dir_matches(direction_str, legacy_dir):
+                                continue
                 # time — priorité à l'heure temps réel puis théorique
                 dt = dep.get("stop_date_time") or {}
                 if isinstance(dt, dict):

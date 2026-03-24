@@ -125,6 +125,7 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
                 dep_lines = await provider.get_next_departures(  # type: ignore[attr-defined]
                     stop_area_id=sa_id,
                     line_id=line_id,
+                    destination_stop_area_id=seg.get("destination_stop_area_id"),
                     direction_hints=hints if hints else None,
                     direction_label=None if hints else legacy_dir or None,
                     count=3,
