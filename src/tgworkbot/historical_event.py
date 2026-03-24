@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime
@@ -58,6 +59,7 @@ def _is_retryable_cached_error(headline: str) -> bool:
             "WIKIMEDIA_NETWORK",
             "WIKIMEDIA_UNAVAILABLE",
             "FETCH_EXCEPTION",
+            "PICK_FAILED",
         )
     )
 
@@ -206,13 +208,17 @@ def _best_page_url(*, event_text: str, pages: list[Any]) -> str | None:
 
 
 def _is_hard_excluded(text: str) -> bool:
-    t = text.lower()
-    if any(p in t for p in _HARD_EXCLUDE_PHRASES):
-        return True
-    for w in _HARD_EXCLUDE_WORDS:
-        if re.search(rf"(?<![a-zàâäéèêëïîôùûçœæ]){re.escape(w)}(?![a-zàâäéèêëïîôùûçœæ])", t):
+    try:
+        t = text.lower()
+        if any(p in t for p in _HARD_EXCLUDE_PHRASES):
             return True
-    return False
+        for w in _HARD_EXCLUDE_WORDS:
+            if re.search(rf"(?<![a-zàâäéèêëïîôùûçœæ]){re.escape(w)}(?![a-zàâäéèêëïîôùûçœæ])", t):
+                return True
+        return False
+    except re.error:
+        LOG.warning("historical_event _is_hard_excluded regex error, skip filter")
+        return False
 
 
 def _parse_event_year(ev: dict[str, Any]) -> int | None:
@@ -372,23 +378,23 @@ async def _fetch_onthisday_kind(
         try:
             r = await client.get(url, headers=headers)
             last_status = r.status_code
-            r.raise_for_status()
-            data = r.json()
+            if r.status_code != 200:
+                code = r.status_code
+                LOG.warning(
+                    "historical_event onthisday %s HTTP %s — %s",
+                    kind,
+                    code,
+                    url.split("/feed/")[-1] if "/feed/" in url else url,
+                )
+                continue
+            try:
+                data = r.json()
+            except json.JSONDecodeError as e:
+                LOG.warning("historical_event onthisday %s JSON invalide: %s", kind, e)
+                continue
             if isinstance(data, dict):
                 return data
             return {}
-        except httpx.HTTPStatusError as e:
-            last_status = e.response.status_code if e.response is not None else last_status
-            code = e.response.status_code if e.response is not None else 0
-            if code in (403, 404, 429, 502, 503):
-                LOG.warning(
-                    "historical_event onthisday %s %s -> HTTP %s (essai suivant)",
-                    kind,
-                    url.split("/feed/")[-1] if "/feed/" in url else url,
-                    code,
-                )
-                continue
-            raise
         except httpx.RequestError as e:
             LOG.warning("historical_event onthisday %s network: %s", kind, e)
             continue
@@ -405,11 +411,31 @@ async def fetch_positive_historical_event(
     lang = (cfg.wikipedia_onthisday_lang or "fr").strip() or "fr"
     mm, dd = _month_day_parts(tz=cfg.bot_timezone)
     current_year = datetime.now(ZoneInfo(cfg.bot_timezone)).year
-    selected_raw, events_raw, holidays_raw = await asyncio.gather(
+    raw_results = await asyncio.gather(
         _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="selected", mm=mm, dd=dd),
         _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="events", mm=mm, dd=dd),
         _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="holidays", mm=mm, dd=dd),
+        return_exceptions=True,
     )
+    selected_raw: dict[str, Any] = {}
+    events_raw: dict[str, Any] = {}
+    holidays_raw: dict[str, Any] = {}
+    for label, res in zip(("selected", "events", "holidays"), raw_results, strict=True):
+        if isinstance(res, BaseException):
+            LOG.error(
+                "historical_event gather %s failed: %s",
+                label,
+                res,
+                exc_info=(type(res), res, res.__traceback__),
+            )
+            continue
+        if isinstance(res, dict):
+            if label == "selected":
+                selected_raw = res
+            elif label == "events":
+                events_raw = res
+            else:
+                holidays_raw = res
 
     combined: list[tuple[dict[str, Any], bool]] = []
     for ev in _normalize_event_items(selected_raw, key="selected"):
@@ -422,7 +448,12 @@ async def fetch_positive_historical_event(
     if not combined:
         return None, None, "WIKIMEDIA_UNAVAILABLE"
 
-    picked = _pick_best_event(combined, cfg=cfg, current_year=current_year)
+    try:
+        picked = _pick_best_event(combined, cfg=cfg, current_year=current_year)
+    except Exception:
+        LOG.exception("historical_event _pick_best_event failed")
+        return None, None, "PICK_FAILED"
+
     if not picked:
         return None, None, "WIKIMEDIA_NO_EVENT"
 
@@ -486,9 +517,9 @@ async def get_historical_event_text_for_today(*, cfg: Config | None = None, db: 
             elif text:
                 headline = text
                 url = art_url
-        except Exception:
+        except Exception as e:
             LOG.exception("historical_event fetch failed")
-            fetch_err = "FETCH_EXCEPTION"
+            fetch_err = f"FETCH_EXCEPTION_{type(e).__name__}"
 
     if fetch_err:
         headline = f"Erreur : {fetch_err}"
