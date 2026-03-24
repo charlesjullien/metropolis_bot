@@ -36,6 +36,14 @@ def _http_headers(*, cfg: Config) -> dict[str, str]:
     }
 
 
+def _is_legacy_history_cache(headline: str) -> bool:
+    """Ancien format sans date « Le {j} {mois} {année} » — on refetch."""
+    h = (headline or "").strip()
+    if not h or h.startswith("Erreur :"):
+        return False
+    return not h.startswith("Le ")
+
+
 def _is_retryable_cached_error(headline: str) -> bool:
     h = (headline or "").strip()
     if not h.startswith("Erreur : "):
@@ -114,6 +122,43 @@ _NEGATIVE_HINTS = frozenset(
     }
 )
 
+# Mots entiers (évite ex. « Stalingrad » si on exclut « staline »).
+_HARD_EXCLUDE_WORDS = (
+    "hitler",
+    "nazi",
+    "nazis",
+    "nazisme",
+    "nsdap",
+    "staline",
+    "weimar",
+)
+
+_HARD_EXCLUDE_PHRASES = (
+    "shoah",
+    "auschwitz",
+    "gestapo",
+    "third reich",
+    "troisième reich",
+    "3e reich",
+    "khmer rouge",
+    "djihad",
+)
+
+_MONTHS_FR = (
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+)
+
 
 def _today_daykey(*, tz: str) -> str:
     return datetime.now(ZoneInfo(tz)).date().isoformat()
@@ -124,18 +169,117 @@ def _month_day_parts(*, tz: str) -> tuple[str, str]:
     return f"{now.month:02d}", f"{now.day:02d}"
 
 
-def _page_url(pages: list[dict]) -> str | None:
-    for p in pages or []:
-        if not isinstance(p, dict):
-            continue
-        cu = p.get("content_urls")
-        if isinstance(cu, dict):
-            desk = cu.get("desktop")
-            if isinstance(desk, dict):
-                u = desk.get("page")
-                if isinstance(u, str) and u.startswith("http"):
-                    return u
+def _single_page_url(p: dict) -> str | None:
+    cu = p.get("content_urls")
+    if isinstance(cu, dict):
+        desk = cu.get("desktop")
+        if isinstance(desk, dict):
+            u = desk.get("page")
+            if isinstance(u, str) and u.startswith("http"):
+                return u
     return None
+
+
+def _best_page_url(*, event_text: str, pages: list[Any]) -> str | None:
+    """Évite un lien générique (ex. « Allemagne ») quand une autre page colle mieux au texte."""
+    plist = [p for p in (pages or []) if isinstance(p, dict)]
+    if not plist:
+        return None
+    tl = event_text.lower()
+    best_u: str | None = None
+    best_s = -1
+    for p in plist:
+        u = _single_page_url(p)
+        if not u:
+            continue
+        titles = p.get("titles") if isinstance(p.get("titles"), dict) else {}
+        norm = str(titles.get("normalized") or titles.get("canonical") or p.get("title") or "")
+        norm = norm.replace("_", " ").lower()
+        words = re.findall(r"[a-zàâäéèêëïîôùûçœæ]{4,}", norm)
+        score = sum(1 for w in words if w in tl)
+        if score > best_s:
+            best_s = score
+            best_u = u
+    if best_s > 0 and best_u:
+        return best_u
+    return _single_page_url(plist[0])
+
+
+def _is_hard_excluded(text: str) -> bool:
+    t = text.lower()
+    if any(p in t for p in _HARD_EXCLUDE_PHRASES):
+        return True
+    for w in _HARD_EXCLUDE_WORDS:
+        if re.search(rf"(?<![a-zàâäéèêëïîôùûçœæ]){re.escape(w)}(?![a-zàâäéèêëïîôùûçœæ])", t):
+            return True
+    return False
+
+
+def _parse_event_year(ev: dict[str, Any]) -> int | None:
+    y = ev.get("year")
+    if isinstance(y, int) and 1 <= y <= 9999:
+        return y
+    if isinstance(y, str):
+        s = y.strip()
+        if s.isdigit() and len(s) in (3, 4):
+            try:
+                yi = int(s)
+                if 1 <= yi <= 9999:
+                    return yi
+            except ValueError:
+                pass
+        m = re.match(r"^(\d{3,4})\b", s)
+        if m:
+            try:
+                yi = int(m.group(1))
+                if 1 <= yi <= 9999:
+                    return yi
+            except ValueError:
+                pass
+    text = str(ev.get("text") or "").strip()
+    m = re.match(r"^(\d{3,4})\b", text)
+    if m:
+        try:
+            yi = int(m.group(1))
+            if 1000 <= yi <= 2100:
+                return yi
+        except ValueError:
+            pass
+    m = re.search(r"\b(1[4-9]\d{2}|20[0-2]\d)\b", text[:220])
+    if m:
+        try:
+            yi = int(m.group(1))
+            if 1400 <= yi <= 2035:
+                return yi
+        except ValueError:
+            pass
+    return None
+
+
+def _is_recurring_no_year(*, text: str) -> bool:
+    """Fêtes / journées internationales souvent sans champ year dans le JSON."""
+    t = text.lower()
+    return any(
+        k in t
+        for k in (
+            "journée",
+            "fête",
+            "fete",
+            "journee mondiale",
+            "journée mondiale",
+            "fête nationale",
+            "commémor",
+        )
+    )
+
+
+def _calendar_headline(*, cfg: Config, year: int | None, body: str) -> str:
+    now = datetime.now(ZoneInfo(cfg.bot_timezone))
+    day_n, mon_i = now.day, now.month - 1
+    mo = _MONTHS_FR[mon_i]
+    if year is not None:
+        return f"Le {day_n} {mo} {year} : {body}"
+    return f"Le {day_n} {mo} (chaque année) : {body}"
 
 
 def _normalize_event_items(data: dict, *, key: str) -> list[dict[str, Any]]:
@@ -171,6 +315,7 @@ def _score_candidate(*, text: str, year: int | None, from_selected: bool, curren
 def _pick_best_event(
     items: list[tuple[dict[str, Any], bool]],
     *,
+    cfg: Config,
     current_year: int,
 ) -> tuple[str, str | None] | None:
     if not items:
@@ -178,32 +323,37 @@ def _pick_best_event(
     best: tuple[float, dict[str, Any], bool] | None = None
     for ev, from_sel in items:
         text = str(ev.get("text") or "").strip()
-        if not text:
+        if not text or _is_hard_excluded(text):
             continue
-        y = ev.get("year")
-        year_i: int | None = None
-        if isinstance(y, int):
-            year_i = y
-        elif isinstance(y, str) and y.isdigit():
-            year_i = int(y)
-        elif isinstance(y, str):
-            m = re.match(r"^(\d{3,4})", y.strip())
-            if m:
-                try:
-                    year_i = int(m.group(1))
-                except ValueError:
-                    year_i = None
+        year_i = _parse_event_year(ev)
+        recurring = _is_recurring_no_year(text)
+        if year_i is None and not recurring:
+            continue
         sc = _score_candidate(text=text, year=year_i, from_selected=from_sel, current_year=current_year)
         if best is None or sc > best[0]:
             best = (sc, ev, from_sel)
     if best is None:
+        for ev, from_sel in items:
+            text = str(ev.get("text") or "").strip()
+            if not text or _is_hard_excluded(text):
+                continue
+            year_i = _parse_event_year(ev)
+            sc = _score_candidate(
+                text=text, year=year_i, from_selected=from_sel, current_year=current_year
+            )
+            sc -= 4.0
+            if best is None or sc > best[0]:
+                best = (sc, ev, from_sel)
+    if best is None:
         return None
     _, ev, _ = best
     text = str(ev.get("text") or "").strip()
+    year_i = _parse_event_year(ev)
     pages = ev.get("pages")
     pages_l = pages if isinstance(pages, list) else []
-    url = _page_url(pages_l)
-    return text, url
+    url = _best_page_url(event_text=text, pages=pages_l)
+    headline = _calendar_headline(cfg=cfg, year=year_i, body=text)
+    return headline, url
 
 
 async def _fetch_onthisday_kind(
@@ -272,14 +422,14 @@ async def fetch_positive_historical_event(
     if not combined:
         return None, None, "WIKIMEDIA_UNAVAILABLE"
 
-    picked = _pick_best_event(combined, current_year=current_year)
+    picked = _pick_best_event(combined, cfg=cfg, current_year=current_year)
     if not picked:
         return None, None, "WIKIMEDIA_NO_EVENT"
 
-    text, url = picked
+    headline, url = picked
     if url:
-        return text, url, None
-    return text, None, None
+        return headline, url, None
+    return headline, None, None
 
 
 async def get_historical_event_text_for_today(*, cfg: Config | None = None, db: Db) -> str | None:
@@ -293,7 +443,9 @@ async def get_historical_event_text_for_today(*, cfg: Config | None = None, db: 
     cached = db.get_history_day_cache_ready(day=day)
     if cached:
         headline, url = cached
-        if headline and _is_retryable_cached_error(headline):
+        if headline and (
+            _is_retryable_cached_error(headline) or _is_legacy_history_cache(headline)
+        ):
             db.delete_history_day_cache_row(day=day)
             cached = None
     if cached:
