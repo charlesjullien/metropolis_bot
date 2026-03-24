@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable
 
 import httpx
@@ -24,10 +25,38 @@ class WeatherSummary:
     max_temp_8_20_c: float | None
     umbrella_sure: bool
     emoji: str
+    is_fallback_cache: bool = False
 
 
 OPEN_METEO_GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
+_WEATHER_CACHE_TTL = timedelta(hours=6)
+_WEATHER_RETRIES_ON_429 = 2
+_WEATHER_BACKOFF_SECONDS = 0.7
+_weather_cache: dict[str, tuple[datetime, WeatherSummary]] = {}
+
+
+def _weather_cache_key(*, label: str, lat: float, lon: float, timezone: str) -> str:
+    return f"{label.strip().lower()}|{lat:.4f}|{lon:.4f}|{timezone.strip()}"
+
+
+def _get_cached_summary(*, cache_key: str) -> WeatherSummary | None:
+    cached = _weather_cache.get(cache_key)
+    if not cached:
+        return None
+    fetched_at, summary = cached
+    if datetime.now(timezone.utc) - fetched_at > _WEATHER_CACHE_TTL:
+        return None
+    return WeatherSummary(
+        label=summary.label,
+        day=summary.day,
+        windows=summary.windows,
+        min_temp_8_20_c=summary.min_temp_8_20_c,
+        max_temp_8_20_c=summary.max_temp_8_20_c,
+        umbrella_sure=summary.umbrella_sure,
+        emoji=summary.emoji,
+        is_fallback_cache=True,
+    )
 
 
 async def geocode_first(
@@ -103,6 +132,7 @@ async def get_rain_summary_today(
     lon: float,
     timezone: str,
 ) -> WeatherSummary:
+    cache_key = _weather_cache_key(label=label, lat=lat, lon=lon, timezone=timezone)
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -110,10 +140,39 @@ async def get_rain_summary_today(
         "forecast_days": 1,
         "timezone": timezone,
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.get(OPEN_METEO_FORECAST, params=params)
-        r.raise_for_status()
-        data = r.json()
+    data: dict
+    attempts = _WEATHER_RETRIES_ON_429 + 1
+    last_err: Exception | None = None
+    for idx in range(attempts):
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.get(OPEN_METEO_FORECAST, params=params)
+                r.raise_for_status()
+                data = r.json()
+            break
+        except httpx.HTTPStatusError as e:
+            last_err = e
+            is_429 = e.response is not None and e.response.status_code == 429
+            if is_429 and idx < attempts - 1:
+                await asyncio.sleep(_WEATHER_BACKOFF_SECONDS * (idx + 1))
+                continue
+            cached = _get_cached_summary(cache_key=cache_key)
+            if cached is not None:
+                return cached
+            raise
+        except httpx.RequestError as e:
+            last_err = e
+            cached = _get_cached_summary(cache_key=cache_key)
+            if cached is not None:
+                return cached
+            raise
+    else:
+        cached = _get_cached_summary(cache_key=cache_key)
+        if cached is not None:
+            return cached
+        if last_err is not None:
+            raise last_err
+        raise RuntimeError("weather fetch failed without explicit error")
 
     hourly = data.get("hourly") or {}
     times: Iterable[str] = hourly.get("time") or []
@@ -148,7 +207,7 @@ async def get_rain_summary_today(
                 umbrella_sure = True
 
     emoji = "🌧️" if umbrella_sure else ("🌦️" if windows else "☀️")
-    return WeatherSummary(
+    summary = WeatherSummary(
         label=label,
         day=d,
         windows=windows,
@@ -157,16 +216,23 @@ async def get_rain_summary_today(
         umbrella_sure=umbrella_sure,
         emoji=emoji,
     )
+    _weather_cache[cache_key] = (datetime.now(timezone.utc), summary)
+    return summary
 
 
 def format_rain_summary(summary: WeatherSummary) -> str:
     title = "<b><u>Météo</u></b>"
+    fallback_note = (
+        "\n- <b>Données de secours</b> : dernière météo valide (API temporairement limitée)."
+        if summary.is_fallback_cache
+        else ""
+    )
     if not summary.windows:
         temps_part = ""
         if summary.min_temp_8_20_c is not None and summary.max_temp_8_20_c is not None:
             temps_part = f"\n- Températures (8h-20h) : {summary.min_temp_8_20_c:.0f}°C / {summary.max_temp_8_20_c:.0f}°C"
         umbrella_part = "" if not summary.umbrella_sure else "\n- Parapluie : oui"
-        return f"{summary.emoji} {title} ({summary.label}) — aujourd’hui: pas de pluie prévue.{umbrella_part}{temps_part}"
+        return f"{summary.emoji} {title} ({summary.label}) — aujourd’hui: pas de pluie prévue.{umbrella_part}{temps_part}{fallback_note}"
 
     parts = [f"{summary.emoji} {title} ({summary.label}) — pluie prévue:"]
     if summary.umbrella_sure:
@@ -181,5 +247,7 @@ def format_rain_summary(summary: WeatherSummary) -> str:
         parts.append(
             f"- {w.start_hour:02d}h–{w.end_hour_exclusive:02d}h: ~{w.total_mm} mm (pic {w.max_mm_per_h} mm/h)"
         )
+    if fallback_note:
+        parts.append(fallback_note.strip())
     return "\n".join(parts)
 

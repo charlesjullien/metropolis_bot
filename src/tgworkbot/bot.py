@@ -66,9 +66,10 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "🌤 Météo :",
         "/lieuMeteo <ville> ou <latitude,longitude>",
         "",
-        "📰 News :",
-        "/recevoir_news",
-        "/recevoir_news_finance",
+        "📜 Histoire :",
+        "/evenement_historique",
+        "💹 Cours dans la notif :",
+        "/cours_finance",
         "",
         "⏰ Définir l'heure de réception de notification :",
         "/heure_notif",
@@ -506,11 +507,11 @@ async def _start_segment_flow_from_text(
         _setup_set_step(context, f"await_{seg_key}_direction")
 
 
-def _news_du_jour_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
+def _evenement_historique_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(("✅ " if enabled else "") + "Oui", callback_data="news_du_jour:1"),
-            InlineKeyboardButton(("✅ " if not enabled else "") + "Non", callback_data="news_du_jour:0"),
+            InlineKeyboardButton(("✅ " if enabled else "") + "Oui", callback_data="evt_hist:1"),
+            InlineKeyboardButton(("✅ " if not enabled else "") + "Non", callback_data="evt_hist:0"),
         ]
     ]
     return InlineKeyboardMarkup(rows)
@@ -542,7 +543,7 @@ def _finance_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-async def cmd_recevoir_news_finance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_cours_finance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Db = context.application.bot_data["db"]
     user = db.get_user(update.effective_chat.id)
     if not user:
@@ -556,14 +557,16 @@ async def cmd_recevoir_news_finance(update: Update, context: ContextTypes.DEFAUL
     )
 
 
-async def cmd_recevoir_news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_evenement_historique(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Db = context.application.bot_data["db"]
     chat_id = update.effective_chat.id
     user = db.get_user(chat_id)
-    enabled = bool(user.recevoir_news_du_jour) if user else False
+    enabled = bool(user.recevoir_evenement_historique) if user else False
     await update.message.reply_text(
-        "Veux-tu un extrait d’actu (Le Média Positif + repli NewsAPI) dans ta notification quotidienne ?",
-        reply_markup=_news_du_jour_keyboard(enabled=enabled),
+        "Veux-tu un <b>événement historique</b> (Wikipédia, sélection orientée positif / majeur) "
+        "dans ta notification quotidienne ?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=_evenement_historique_keyboard(enabled=enabled),
     )
 
 
@@ -976,7 +979,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     modes = user.allowed_modes or "tous"
     meteo = user.meteo_label or "—"
     notif_time = user.notif_time or "—"
-    news_pref = "Oui (actu du jour)" if user.recevoir_news_du_jour else "Non"
+    histo_pref = "Oui (événement historique)" if user.recevoir_evenement_historique else "Non"
     labels = dict(FINANCE_OPTIONS)
     fs = _finance_from_user(user)
     finance_pref = ", ".join(labels[k] for k, _ in FINANCE_OPTIONS if k in fs) if fs else "—"
@@ -1002,7 +1005,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"- Lieu météo: {meteo}\n"
         f"- Segments:\n{seg_block}\n"
         f"- Heure notif: {notif_time}\n"
-        f"- News du jour: {news_pref}\n"
+        f"- Événement historique: {histo_pref}\n"
         f"- Cours / indices: {finance_pref}"
     )
 
@@ -1470,16 +1473,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await q.answer()
         return
 
-    if data.startswith("bonne_nouv:") or data.startswith("news_du_jour:"):
+    if data.startswith("evt_hist:"):
         raw = data.split(":", 1)[1].strip()
         if raw not in {"0", "1"}:
             return
         enabled = raw == "1"
-        db.set_recevoir_news_du_jour(chat_id, enabled)
+        db.set_recevoir_evenement_historique(chat_id, enabled)
         label = "activée" if enabled else "désactivée"
-        await q.edit_message_text(f"News du jour : option {label}.")
+        await q.edit_message_text(f"Événement historique : option {label}.")
         flow = _setup_flow(context)
-        if flow and str(flow.get("step") or "") == "await_daily_news_click" and q.message:
+        if flow and str(flow.get("step") or "") == "await_evenement_historique_click" and q.message:
             _setup_set_step(context, "await_notif_time")
             await q.message.reply_text(
                 "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
@@ -1538,10 +1541,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not selected:
             await q.edit_message_text("Aucun indice choisi : le bloc « cours des indices » est désactivé.")
             if in_setup_finance and q.message:
-                _setup_set_step(context, "await_daily_news_click")
+                _setup_set_step(context, "await_evenement_historique_click")
                 await q.message.reply_text(
-                    "Veux-tu un extrait d’actu dans la notification ?",
-                    reply_markup=_news_du_jour_keyboard(enabled=bool(user.recevoir_news_du_jour)),
+                    "Veux-tu un <b>événement historique</b> dans la notification ?",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_evenement_historique_keyboard(enabled=bool(user.recevoir_evenement_historique)),
                 )
             return
         labels = dict(FINANCE_OPTIONS)
@@ -1549,10 +1553,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "Cours enregistrés : " + ", ".join(labels[k] for k in sorted(selected))
         )
         if in_setup_finance and q.message:
-            _setup_set_step(context, "await_daily_news_click")
+            _setup_set_step(context, "await_evenement_historique_click")
             await q.message.reply_text(
-                "Veux-tu un extrait d’actu dans la notification ?",
-                reply_markup=_news_du_jour_keyboard(enabled=bool(user.recevoir_news_du_jour)),
+                "Veux-tu un <b>événement historique</b> dans la notification ?",
+                parse_mode=ParseMode.HTML,
+                reply_markup=_evenement_historique_keyboard(enabled=bool(user.recevoir_evenement_historique)),
             )
         return
 
@@ -1834,15 +1839,15 @@ async def _render_notification_text_for_user(*, app: Application, user) -> str |
         except Exception:
             LOG.exception("finance snapshot failed for %s", user.chat_id)
 
-    if user.recevoir_news_du_jour:
+    if user.recevoir_evenement_historique:
         try:
-            from tgworkbot.daily_news import get_daily_news_text_for_today
+            from tgworkbot.historical_event import get_historical_event_text_for_today
 
-            news = await get_daily_news_text_for_today(cfg=cfg, db=db)
-            if news:
-                parts.append("<b><u>News du jour :</u></b>\n" + escape_telegram_html(news))
+            histo = await get_historical_event_text_for_today(cfg=cfg, db=db)
+            if histo:
+                parts.append("<b><u>Événement historique :</u></b>\n" + escape_telegram_html(histo))
         except Exception:
-            LOG.exception("daily_news failed for %s", user.chat_id)
+            LOG.exception("historical_event failed for %s", user.chat_id)
 
     if not parts:
         return None
@@ -1972,9 +1977,9 @@ def main() -> None:
     app.add_handler(CommandHandler("heure_notif", cmd_heure_notif))
     app.add_handler(CommandHandler("purge_db", cmd_purge_db))
     app.add_handler(CommandHandler("reset_all", cmd_reset_all))
-    app.add_handler(CommandHandler("recevoir_news", cmd_recevoir_news))
-    app.add_handler(CommandHandler("recevoir_bonne_nouvelle", cmd_recevoir_news))
-    app.add_handler(CommandHandler("recevoir_news_finance", cmd_recevoir_news_finance))
+    app.add_handler(CommandHandler("evenement_historique", cmd_evenement_historique))
+    app.add_handler(CommandHandler("cours_finance", cmd_cours_finance))
+    app.add_handler(CommandHandler("recevoir_news_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("lieuMeteo", cmd_lieu_meteo))
     # /perturbations reste disponible pour compat.
     app.add_handler(CommandHandler("perturbations", cmd_perturbations))

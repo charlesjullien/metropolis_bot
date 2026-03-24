@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
+
+import httpx
 from telegram import Bot
 
 from tgworkbot.config import load_config
@@ -87,13 +89,16 @@ def _parse_segments_json(user) -> list[dict]:
 async def _render_meteo_for_user(*, cfg, user) -> str | None:
     if user.meteo_lat is None or user.meteo_lon is None or not user.meteo_label:
         return None
-    summary = await get_rain_summary_today(
-        label=user.meteo_label,
-        lat=float(user.meteo_lat),
-        lon=float(user.meteo_lon),
-        timezone=cfg.bot_timezone,
-    )
-    return format_rain_summary(summary)
+    try:
+        summary = await get_rain_summary_today(
+            label=user.meteo_label,
+            lat=float(user.meteo_lat),
+            lon=float(user.meteo_lon),
+            timezone=cfg.bot_timezone,
+        )
+        return format_rain_summary(summary)
+    except (httpx.HTTPStatusError, httpx.RequestError):
+        return "🌥️ <b><u>Météo</u></b> — service temporairement indisponible."
 
 
 async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str | None:
@@ -199,15 +204,15 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
         except Exception:
             LOG.exception("finance snapshot failed for %s", user.chat_id)
 
-    if user.recevoir_news_du_jour:
+    if user.recevoir_evenement_historique:
         try:
-            from tgworkbot.daily_news import get_daily_news_text_for_today
+            from tgworkbot.historical_event import get_historical_event_text_for_today
 
-            news = await get_daily_news_text_for_today(cfg=cfg, db=db)
-            if news:
-                parts.append("<b><u>News du jour :</u></b>\n" + escape_telegram_html(news))
+            histo = await get_historical_event_text_for_today(cfg=cfg, db=db)
+            if histo:
+                parts.append("<b><u>Événement historique :</u></b>\n" + escape_telegram_html(histo))
         except Exception:
-            LOG.exception("daily_news failed for %s", user.chat_id)
+            LOG.exception("historical_event failed for %s", user.chat_id)
 
     if not parts:
         return None

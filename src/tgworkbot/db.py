@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-def _row_bool_news_du_jour(row: sqlite3.Row) -> bool:
+def _row_bool_evenement_historique(row: sqlite3.Row) -> bool:
+    if "recevoir_evenement_historique" in row.keys():
+        return bool(row["recevoir_evenement_historique"])
     if "recevoir_news_du_jour" in row.keys():
         return bool(row["recevoir_news_du_jour"])
     if "recevoir_bonne_nouvelle" in row.keys():
@@ -34,8 +36,8 @@ class UserPrefs:
     notif_time: str | None
     # Last sent notification time key (format "YYYY-MM-DD HH:MM")
     last_notif_sent_key: str | None
-    # Inclure l’extrait d’actu du jour dans la notification
-    recevoir_news_du_jour: bool
+    # Inclure un événement historique (positif / majeur) dans la notification
+    recevoir_evenement_historique: bool
     # Selected news category: "tech" | "sport" | "science"
     news_category: str | None
     # Comma-separated finance keys: sp500,cac40,btc,gold
@@ -71,7 +73,7 @@ class Db:
                     segments_json TEXT,
                     notif_time TEXT,
                     last_notif_sent_key TEXT,
-                    recevoir_news_du_jour INTEGER,
+                    recevoir_evenement_historique INTEGER,
                     news_category TEXT,
                     finance_selection TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
@@ -82,13 +84,17 @@ class Db:
 
             # Lightweight migrations for existing DBs
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-            if "recevoir_news_du_jour" not in cols:
-                if "recevoir_bonne_nouvelle" in cols:
+            if "recevoir_evenement_historique" not in cols:
+                if "recevoir_news_du_jour" in cols:
                     conn.execute(
-                        "ALTER TABLE users RENAME COLUMN recevoir_bonne_nouvelle TO recevoir_news_du_jour"
+                        "ALTER TABLE users RENAME COLUMN recevoir_news_du_jour TO recevoir_evenement_historique"
+                    )
+                elif "recevoir_bonne_nouvelle" in cols:
+                    conn.execute(
+                        "ALTER TABLE users RENAME COLUMN recevoir_bonne_nouvelle TO recevoir_evenement_historique"
                     )
                 else:
-                    conn.execute("ALTER TABLE users ADD COLUMN recevoir_news_du_jour INTEGER")
+                    conn.execute("ALTER TABLE users ADD COLUMN recevoir_evenement_historique INTEGER DEFAULT 0")
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
 
             def add_col(name: str, ddl: str) -> None:
@@ -105,6 +111,18 @@ class Db:
             add_col("last_notif_sent_key", "last_notif_sent_key TEXT")
             add_col("news_category", "news_category TEXT")
             add_col("finance_selection", "finance_selection TEXT")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS history_day_cache (
+                    day TEXT PRIMARY KEY,
+                    headline TEXT,
+                    url TEXT,
+                    fetched_at TEXT,
+                    state TEXT DEFAULT 'ready'
+                )
+                """.strip()
+            )
 
             conn.execute(
                 """
@@ -236,7 +254,7 @@ class Db:
             segments_json=row["segments_json"],
             notif_time=row["notif_time"],
             last_notif_sent_key=row["last_notif_sent_key"],
-            recevoir_news_du_jour=_row_bool_news_du_jour(row),
+            recevoir_evenement_historique=_row_bool_evenement_historique(row),
             news_category=row["news_category"] if "news_category" in row.keys() else None,
             finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
         )
@@ -260,7 +278,7 @@ class Db:
                 segments_json=row["segments_json"],
                 notif_time=row["notif_time"],
                 last_notif_sent_key=row["last_notif_sent_key"],
-                recevoir_news_du_jour=_row_bool_news_du_jour(row),
+                recevoir_evenement_historique=_row_bool_evenement_historique(row),
                 news_category=row["news_category"] if "news_category" in row.keys() else None,
                 finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
             )
@@ -308,7 +326,7 @@ class Db:
 
     def purge_users(self) -> None:
         """
-        Deletes all user rows and clears shared caches (news, finance).
+        Deletes all user rows and clears shared caches (historique du jour, finance, ancien news_cache).
         Reserved for admin /purge_db YES.
         """
         with self._connect() as conn:
@@ -316,6 +334,7 @@ class Db:
 
         # Development/testing purge of news cache too.
         with self._connect() as conn:
+            conn.execute("DELETE FROM history_day_cache")
             conn.execute("DELETE FROM news_cache")
             conn.execute("DELETE FROM finance_cache")
 
@@ -328,7 +347,7 @@ class Db:
                     chat_id, depart, direction, depart_sa_id, depart_sa_label,
                     arrivee_sa_id, arrivee_sa_label, allowed_modes,
                     meteo_label, meteo_lat, meteo_lon, segments_json,
-                    notif_time, last_notif_sent_key, recevoir_news_du_jour,
+                    notif_time, last_notif_sent_key, recevoir_evenement_historique,
                     news_category, finance_selection
                 ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL)
                 ON CONFLICT(chat_id) DO UPDATE SET
@@ -345,7 +364,7 @@ class Db:
                     segments_json=NULL,
                     notif_time=NULL,
                     last_notif_sent_key=NULL,
-                    recevoir_news_du_jour=0,
+                    recevoir_evenement_historique=0,
                     news_category=NULL,
                     finance_selection=NULL,
                     updated_at=datetime('now')
@@ -365,22 +384,22 @@ class Db:
                 (chat_id, finance_selection),
             )
 
-    def set_recevoir_news_du_jour(self, chat_id: int, enabled: bool) -> None:
+    def set_recevoir_evenement_historique(self, chat_id: int, enabled: bool) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO users(chat_id, recevoir_news_du_jour) VALUES (?, ?)
+                INSERT INTO users(chat_id, recevoir_evenement_historique) VALUES (?, ?)
                 ON CONFLICT(chat_id) DO UPDATE SET
-                    recevoir_news_du_jour=excluded.recevoir_news_du_jour,
+                    recevoir_evenement_historique=excluded.recevoir_evenement_historique,
                     updated_at=datetime('now')
                 """.strip(),
                 (chat_id, 1 if enabled else 0),
             )
 
-    def get_news_cache_ready(self, *, day: str) -> tuple[str | None, str | None] | None:
+    def get_history_day_cache_ready(self, *, day: str) -> tuple[str | None, str | None] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT headline, url FROM news_cache WHERE day=? AND state='ready'",
+                "SELECT headline, url FROM history_day_cache WHERE day=? AND state='ready'",
                 (day,),
             ).fetchone()
         if row is None:
@@ -391,13 +410,15 @@ class Db:
             return None
         return str(headline), (str(url) if url is not None else None)
 
-    def mark_news_pending(self, *, day: str) -> bool:
+    def mark_history_day_pending(self, *, day: str) -> bool:
         """
-        Marks the news cache as 'pending' for the given day.
-        Returns True if this caller should perform the API fetch.
+        Marque le cache « événement du jour » comme pending.
+        Retourne True si cet appelant doit lancer le fetch API.
         """
         with self._connect() as conn:
-            row = conn.execute("SELECT state, headline FROM news_cache WHERE day=?", (day,)).fetchone()
+            row = conn.execute(
+                "SELECT state, headline FROM history_day_cache WHERE day=?", (day,)
+            ).fetchone()
             if row is not None:
                 state = str(row["state"] or "")
                 headline = row["headline"]
@@ -406,18 +427,18 @@ class Db:
                 if state == "pending":
                     return False
                 conn.execute(
-                    "UPDATE news_cache SET headline=NULL, url=NULL, fetched_at=NULL, state='pending' WHERE day=?",
+                    "UPDATE history_day_cache SET headline=NULL, url=NULL, fetched_at=NULL, state='pending' WHERE day=?",
                     (day,),
                 )
                 return True
 
             conn.execute(
-                "INSERT INTO news_cache(day, headline, url, fetched_at, state) VALUES (?, NULL, NULL, NULL, 'pending')",
+                "INSERT INTO history_day_cache(day, headline, url, fetched_at, state) VALUES (?, NULL, NULL, NULL, 'pending')",
                 (day,),
             )
             return True
 
-    def set_news_cache_ready(
+    def set_history_day_cache_ready(
         self,
         *,
         day: str,
@@ -430,7 +451,7 @@ class Db:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO news_cache(day, headline, url, fetched_at, state)
+                INSERT INTO history_day_cache(day, headline, url, fetched_at, state)
                 VALUES (?, ?, ?, ?, 'ready')
                 ON CONFLICT(day) DO UPDATE SET
                     headline=excluded.headline,
