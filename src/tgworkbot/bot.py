@@ -1841,11 +1841,15 @@ async def _render_notification_text_for_user(*, app: Application, user) -> str |
 
     if user.recevoir_evenement_historique:
         try:
-            from tgworkbot.historical_event import get_historical_event_text_for_today
+            from tgworkbot.historical_event import (
+                get_historical_event_text_for_today,
+                historical_event_notification_heading,
+            )
 
             histo = await get_historical_event_text_for_today(cfg=cfg, db=db)
             if histo:
-                parts.append("<b><u>Événement historique :</u></b>\n" + escape_telegram_html(histo))
+                title = escape_telegram_html(historical_event_notification_heading(cfg=cfg))
+                parts.append(f"<b><u>{title}</u></b>\n" + escape_telegram_html(histo))
         except Exception:
             LOG.exception("historical_event failed for %s", user.chat_id)
 
@@ -1924,6 +1928,8 @@ async def _notif_scheduler_loop(app: Application) -> None:
 
 
 async def _post_init(app: Application) -> None:
+    if app.bot_data.get("webhook_only"):
+        return
     # If JobQueue isn't installed/configured, rely on an internal asyncio loop.
     if app.job_queue is None:
         if app.bot_data["cfg"].enable_internal_notif_scheduler:
@@ -1945,26 +1951,7 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    quiet_http_client_loggers()
-    # Load .env from project root reliably (even if cwd differs, e.g. PythonAnywhere scheduled tasks)
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    load_dotenv(env_path)
-    cfg = load_config()
-
-    db = Db(cfg.db_path)
-    provider = make_provider(
-        idfm_prim_api_key=cfg.idfm_prim_api_key,
-        allow_planning_fallback=cfg.allow_planning_fallback,
-        realtime_departures_retries=cfg.realtime_departures_retries,
-    )
-
-    app = Application.builder().token(cfg.telegram_bot_token).post_init(_post_init).build()
-    app.bot_data["cfg"] = cfg
-    app.bot_data["db"] = db
-    app.bot_data["transit_provider"] = provider
-
+def _register_command_and_message_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("setup", cmd_setup))
     app.add_handler(CommandHandler("depart", cmd_depart))
@@ -1981,7 +1968,6 @@ def main() -> None:
     app.add_handler(CommandHandler("cours_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("recevoir_news_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("lieuMeteo", cmd_lieu_meteo))
-    # /perturbations reste disponible pour compat.
     app.add_handler(CommandHandler("perturbations", cmd_perturbations))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("stations", cmd_stations))
@@ -1991,7 +1977,12 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_error_handler(_on_error)
 
-    # Planification: on vérifie chaque minute si une notif doit partir (si JobQueue dispo)
+
+def register_notification_jobs(app: Application) -> None:
+    """JobQueue / tâches répétées — désactivé en mode webhook_only (notifs via HTTP cron)."""
+    if app.bot_data.get("webhook_only"):
+        return
+    cfg = app.bot_data["cfg"]
     if app.job_queue is not None:
         app.job_queue.run_repeating(_daily_job, interval=60, first=0, name="daily")
         LOG.info(
@@ -2003,5 +1994,54 @@ def main() -> None:
             "JobQueue non disponible (python-telegram-bot[job-queue] non installé) – pas de notifications programmées."
         )
 
+
+def build_telegram_application(
+    *,
+    cfg,
+    db: Db,
+    provider,
+    webhook_only: bool = False,
+) -> Application:
+    """
+    Construit l’Application PTB (polling local ou traitement d’un update webhook).
+    Si webhook_only=True : pas de JobQueue interne ni de boucle asyncio de notifs ; utiliser le cron HTTP.
+    """
+    app = Application.builder().token(cfg.telegram_bot_token).post_init(_post_init).build()
+    app.bot_data["cfg"] = cfg
+    app.bot_data["db"] = db
+    app.bot_data["transit_provider"] = provider
+    app.bot_data["webhook_only"] = webhook_only
+    _register_command_and_message_handlers(app)
+    return app
+
+
+async def process_one_webhook_update(*, cfg, db: Db, provider, update_body: dict) -> None:
+    """Traite un seul update JSON (WSGI / PythonAnywhere) — cycle de vie Application complet par requête."""
+    app = build_telegram_application(cfg=cfg, db=db, provider=provider, webhook_only=True)
+    async with app:
+        await app.start()
+        upd = Update.de_json(update_body, app.bot)
+        if upd is not None:
+            await app.process_update(upd)
+        await app.stop()
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    quiet_http_client_loggers()
+    # Load .env from project root reliably (even if cwd differs, e.g. PythonAnywhere scheduled tasks)
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    load_dotenv(env_path)
+    cfg = load_config()
+
+    db = Db(cfg.db_path)
+    provider = make_provider(
+        idfm_prim_api_key=cfg.idfm_prim_api_key,
+        allow_planning_fallback=cfg.allow_planning_fallback,
+        realtime_departures_retries=cfg.realtime_departures_retries,
+    )
+
+    app = build_telegram_application(cfg=cfg, db=db, provider=provider, webhook_only=False)
+    register_notification_jobs(app)
     app.run_polling(close_loop=False)
 

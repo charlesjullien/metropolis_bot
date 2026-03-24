@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from telegram import Bot
 
+from tgworkbot.bot import process_one_webhook_update
 from tgworkbot.config import load_config
 from tgworkbot.http_logging import quiet_http_client_loggers
 from tgworkbot.db import Db
@@ -61,6 +62,67 @@ def _format_finance_block_html(fin: str) -> str:
         "<b><u>Cours des indices ce matin :</u></b>",
         1,
     )
+
+
+def _read_wsgi_body(environ: dict) -> bytes:
+    try:
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        length = 0
+    if length <= 0:
+        return b""
+    return environ["wsgi.input"].read(length)
+
+
+def _telegram_webhook_wsgi(environ: dict, start_response: Callable) -> list[bytes]:
+    """
+    POST JSON Telegram → traitement par python-telegram-bot (mode PythonAnywhere sans console).
+    Sécurité : en-tête X-Telegram-Bot-Api-Secret-Token = TELEGRAM_WEBHOOK_SECRET.
+    """
+    if environ.get("REQUEST_METHOD", "GET").upper() != "POST":
+        return _json_response(start_response, status="405 Method Not Allowed", body={"error": "POST only"})
+
+    _load_dotenv_for_wsgi()
+    try:
+        cfg = load_config()
+    except Exception as e:
+        return _json_response(start_response, status="500 Internal Server Error", body={"error": str(e)})
+
+    if not cfg.telegram_webhook_secret:
+        return _json_response(
+            start_response,
+            status="503 Service Unavailable",
+            body={"error": "TELEGRAM_WEBHOOK_SECRET manquant dans .env"},
+        )
+
+    token_hdr = (environ.get("HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN") or "").strip()
+    if token_hdr != cfg.telegram_webhook_secret:
+        return _json_response(start_response, status="403 Forbidden", body={"error": "invalid webhook secret"})
+
+    raw = _read_wsgi_body(environ)
+    try:
+        body = json.loads(raw.decode("utf-8") if raw else "{}")
+    except json.JSONDecodeError:
+        return _json_response(start_response, status="400 Bad Request", body={"error": "invalid JSON"})
+
+    if not isinstance(body, dict):
+        return _json_response(start_response, status="400 Bad Request", body={"error": "JSON object expected"})
+
+    db = Db(cfg.db_path)
+    provider = make_provider(
+        idfm_prim_api_key=cfg.idfm_prim_api_key,
+        allow_planning_fallback=cfg.allow_planning_fallback,
+        realtime_departures_retries=cfg.realtime_departures_retries,
+    )
+    try:
+        asyncio.run(
+            process_one_webhook_update(cfg=cfg, db=db, provider=provider, update_body=body),
+        )
+    except Exception as e:
+        LOG.exception("telegram webhook failed")
+        return _json_response(start_response, status="500 Internal Server Error", body={"error": str(e)})
+
+    return _json_response(start_response, status="200 OK", body={"ok": True})
 
 
 def _json_response(start_response: Callable, *, status: str, body: dict) -> list[bytes]:
@@ -206,11 +268,15 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
 
     if user.recevoir_evenement_historique:
         try:
-            from tgworkbot.historical_event import get_historical_event_text_for_today
+            from tgworkbot.historical_event import (
+                get_historical_event_text_for_today,
+                historical_event_notification_heading,
+            )
 
             histo = await get_historical_event_text_for_today(cfg=cfg, db=db)
             if histo:
-                parts.append("<b><u>Événement historique :</u></b>\n" + escape_telegram_html(histo))
+                title = escape_telegram_html(historical_event_notification_heading(cfg=cfg))
+                parts.append(f"<b><u>{title}</u></b>\n" + escape_telegram_html(histo))
         except Exception:
             LOG.exception("historical_event failed for %s", user.chat_id)
 
@@ -309,12 +375,15 @@ def application(environ, start_response):
     """
     WSGI app for PythonAnywhere.
 
-    Endpoint:
-      - GET/POST /check_for_notifications
+    Endpoints:
+      - GET/POST /check_for_notifications — envoi des notifs (cron-job.org, etc.)
+      - POST /telegram_webhook — mises à jour du bot (mode webhook, sans console)
     """
     quiet_http_client_loggers()
 
     path = _wsgi_request_path(environ).rstrip("/") or "/"
+    if path == "/telegram_webhook":
+        return _telegram_webhook_wsgi(environ, start_response)
     if path != "/check_for_notifications":
         return _json_response(
             start_response,
@@ -322,7 +391,7 @@ def application(environ, start_response):
             body={
                 "error": "not found",
                 "path_received": path,
-                "hint": "Attendu: /check_for_notifications — vérifie l’URL et le fichier WSGI (import application).",
+                "hint": "Attendu: /check_for_notifications ou /telegram_webhook — vérifie l’URL et le WSGI.",
             },
         )
 

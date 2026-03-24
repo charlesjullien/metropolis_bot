@@ -7,6 +7,9 @@ from os import getenv
 @dataclass(frozen=True)
 class Config:
     telegram_bot_token: str
+    # Optionnel : même valeur que `secret_token` passé à setWebhook ; Telegram l’envoie en
+    # en-tête `X-Telegram-Bot-Api-Secret-Token` (obligatoire pour sécuriser /telegram_webhook en WSGI).
+    telegram_webhook_secret: str | None
     bot_timezone: str
     idfm_prim_api_key: str | None
     db_path: str
@@ -53,8 +56,11 @@ def load_config() -> Config:
     except ValueError:
         realtime_departures_retries = 2
 
+    wh_secret = (getenv("TELEGRAM_WEBHOOK_SECRET") or "").strip() or None
+
     return Config(
         telegram_bot_token=token,
+        telegram_webhook_secret=wh_secret,
         bot_timezone=tz,
         idfm_prim_api_key=prim_key,
         db_path=db_path,

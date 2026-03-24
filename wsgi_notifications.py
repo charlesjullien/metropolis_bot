@@ -19,8 +19,17 @@ Onglet **Web** sur PythonAnywhere :
 
   3. **Reload** l’application après chaque changement.
 
-URL à appeler (cron, navigateur) ::
-  https://<ton_user>.pythonanywhere.com/check_for_notifications
+URLs HTTP (même Web app WSGI) ::
+
+- Notifications (cron-job.org, etc.) ::
+    https://<ton_user>.pythonanywhere.com/check_for_notifications
+- Bot en mode **webhook** (recommandé sur compte gratuit : plus besoin de console qui tourne en polling) ::
+    POST https://<ton_user>.pythonanywhere.com/telegram_webhook
+    avec ``TELEGRAM_WEBHOOK_SECRET`` dans ``.env`` et le même ``secret_token`` lors de l’appel
+    ``setWebhook`` à l’API Telegram.
+
+Après déploiement du webhook : **arrête** le processus ``python run.py`` dans la console pour ne pas
+doubler les traitements (polling + webhook).
 
 Si tu vois un JSON ``{"error":"not found","path_received":...}``, c’est bien notre app : l’URL ou le
 chemin ne correspond pas. Si c’est une page HTML « Not found », le WSGI n’utilise pas encore
