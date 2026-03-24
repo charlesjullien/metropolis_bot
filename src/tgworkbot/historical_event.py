@@ -14,10 +14,44 @@ from tgworkbot.db import Db
 
 LOG = logging.getLogger("tgworkbot.historical_event")
 
-# https://api.wikimedia.org/wiki/API_reference/Feed/On_this_day
-WIKIMEDIA_ONTHISDAY = "https://api.wikimedia.org/feed/v1/wikipedia/{lang}/onthisday/{kind}/{mm}/{dd}"
+# Ordre : REST du wiki d’abord (souvent OK là où api.wikimedia.org renvoie 403).
+_ONTHISDAY_URL_TEMPLATES = (
+    "https://{lang}.wikipedia.org/api/rest_v1/feed/onthisday/{kind}/{mm}/{dd}",
+    "https://api.wikimedia.org/feed/v1/wikipedia/{lang}/onthisday/{kind}/{mm}/{dd}",
+)
 
-USER_AGENT = "MetropolisBot/1.0 (Telegram bot; contact via repo maintainer)"
+
+def _http_headers(*, cfg: Config) -> dict[str, str]:
+    contact = (cfg.wikipedia_http_contact or "").strip()
+    if contact:
+        ua = f"MetropolisBot/1.0 (Telegram bot; contact: {contact}) httpx"
+    else:
+        ua = (
+            "MetropolisBot/1.0 (Telegram bot; set WIKIPEDIA_HTTP_CONTACT in .env — "
+            "see https://meta.wikimedia.org/wiki/User-Agent_policy) httpx"
+        )
+    return {
+        "User-Agent": ua,
+        "Accept": "application/json",
+    }
+
+
+def _is_retryable_cached_error(headline: str) -> bool:
+    h = (headline or "").strip()
+    if not h.startswith("Erreur : "):
+        return False
+    return any(
+        token in h
+        for token in (
+            "WIKIMEDIA_HTTP_403",
+            "WIKIMEDIA_HTTP_429",
+            "WIKIMEDIA_HTTP_502",
+            "WIKIMEDIA_HTTP_503",
+            "WIKIMEDIA_NETWORK",
+            "WIKIMEDIA_UNAVAILABLE",
+            "FETCH_EXCEPTION",
+        )
+    )
 
 # Mots-clés français (sous-chaînes) — heuristique simple pour privilégier le positif / majeur.
 _POSITIVE_HINTS = frozenset(
@@ -175,18 +209,41 @@ def _pick_best_event(
 async def _fetch_onthisday_kind(
     *,
     client: httpx.AsyncClient,
+    cfg: Config,
     lang: str,
     kind: str,
     mm: str,
     dd: str,
 ) -> dict[str, Any]:
-    url = WIKIMEDIA_ONTHISDAY.format(lang=lang, kind=kind, mm=mm, dd=dd)
-    r = await client.get(url, headers={"User-Agent": USER_AGENT})
-    r.raise_for_status()
-    data = r.json()
-    if not isinstance(data, dict):
-        return {}
-    return data
+    headers = _http_headers(cfg=cfg)
+    last_status: int | None = None
+    for tpl in _ONTHISDAY_URL_TEMPLATES:
+        url = tpl.format(lang=lang, kind=kind, mm=mm, dd=dd)
+        try:
+            r = await client.get(url, headers=headers)
+            last_status = r.status_code
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, dict):
+                return data
+            return {}
+        except httpx.HTTPStatusError as e:
+            last_status = e.response.status_code if e.response is not None else last_status
+            code = e.response.status_code if e.response is not None else 0
+            if code in (403, 404, 429, 502, 503):
+                LOG.warning(
+                    "historical_event onthisday %s %s -> HTTP %s (essai suivant)",
+                    kind,
+                    url.split("/feed/")[-1] if "/feed/" in url else url,
+                    code,
+                )
+                continue
+            raise
+        except httpx.RequestError as e:
+            LOG.warning("historical_event onthisday %s network: %s", kind, e)
+            continue
+    LOG.error("historical_event onthisday %s: tous les points d’accès ont échoué (dernier HTTP %s)", kind, last_status)
+    return {}
 
 
 async def fetch_positive_historical_event(
@@ -198,17 +255,11 @@ async def fetch_positive_historical_event(
     lang = (cfg.wikipedia_onthisday_lang or "fr").strip() or "fr"
     mm, dd = _month_day_parts(tz=cfg.bot_timezone)
     current_year = datetime.now(ZoneInfo(cfg.bot_timezone)).year
-    try:
-        selected_raw, events_raw, holidays_raw = await asyncio.gather(
-            _fetch_onthisday_kind(client=client, lang=lang, kind="selected", mm=mm, dd=dd),
-            _fetch_onthisday_kind(client=client, lang=lang, kind="events", mm=mm, dd=dd),
-            _fetch_onthisday_kind(client=client, lang=lang, kind="holidays", mm=mm, dd=dd),
-        )
-    except httpx.HTTPStatusError as e:
-        code = str(e.response.status_code) if e.response is not None else "HTTP"
-        return None, None, f"WIKIMEDIA_HTTP_{code}"
-    except httpx.RequestError:
-        return None, None, "WIKIMEDIA_NETWORK"
+    selected_raw, events_raw, holidays_raw = await asyncio.gather(
+        _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="selected", mm=mm, dd=dd),
+        _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="events", mm=mm, dd=dd),
+        _fetch_onthisday_kind(client=client, cfg=cfg, lang=lang, kind="holidays", mm=mm, dd=dd),
+    )
 
     combined: list[tuple[dict[str, Any], bool]] = []
     for ev in _normalize_event_items(selected_raw, key="selected"):
@@ -217,6 +268,9 @@ async def fetch_positive_historical_event(
         combined.append((ev, False))
     for ev in _normalize_event_items(holidays_raw, key="holidays"):
         combined.append((ev, False))
+
+    if not combined:
+        return None, None, "WIKIMEDIA_UNAVAILABLE"
 
     picked = _pick_best_event(combined, current_year=current_year)
     if not picked:
@@ -237,6 +291,11 @@ async def get_historical_event_text_for_today(*, cfg: Config | None = None, db: 
     day = _today_daykey(tz=cfg.bot_timezone)
 
     cached = db.get_history_day_cache_ready(day=day)
+    if cached:
+        headline, url = cached
+        if headline and _is_retryable_cached_error(headline):
+            db.delete_history_day_cache_row(day=day)
+            cached = None
     if cached:
         headline, url = cached
         if not headline:

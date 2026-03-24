@@ -15,6 +15,8 @@ class Config:
     bot_admin_telegram_id: int | None
     # Wikipédia « Ce jour-là » (API Wikimedia), code langue (ex. fr, en)
     wikipedia_onthisday_lang: str
+    # Contact pour User-Agent (URL https ou email) — exigé / recommandé par Wikimedia pour éviter les 403
+    wikipedia_http_contact: str
     # Transports: allow fallback to theoretical timetable when realtime is unavailable
     allow_planning_fallback: bool
     # Number of retries for realtime departures fetch (in addition to first attempt)
@@ -42,6 +44,7 @@ def load_config() -> Config:
             bot_admin_telegram_id = None
 
     wiki_lang = (getenv("WIKIPEDIA_ONTHISDAY_LANG") or "fr").strip() or "fr"
+    wiki_contact = (getenv("WIKIPEDIA_HTTP_CONTACT") or "").strip()
     allow_planning_fallback_raw = (getenv("ALLOW_PLANNING_FALLBACK") or "1").strip()
     allow_planning_fallback = allow_planning_fallback_raw not in {"0", "false", "False", "FALSE", "no", "NO"}
     retries_raw = (getenv("REALTIME_DEPARTURES_RETRIES") or "2").strip()
@@ -58,6 +61,7 @@ def load_config() -> Config:
         enable_internal_notif_scheduler=enable_internal_notif_scheduler,
         bot_admin_telegram_id=bot_admin_telegram_id,
         wikipedia_onthisday_lang=wiki_lang,
+        wikipedia_http_contact=wiki_contact,
         allow_planning_fallback=allow_planning_fallback,
         realtime_departures_retries=realtime_departures_retries,
     )

@@ -6,9 +6,9 @@ set -u
 MAX_SEC="${MAX_SEC:-25}"
 
 urls=(
+  "https://fr.wikipedia.org/api/rest_v1/feed/onthisday/selected/03/24"
+  "https://fr.wikipedia.org/api/rest_v1/feed/onthisday/events/03/24"
   "https://api.wikimedia.org/feed/v1/wikipedia/fr/onthisday/selected/03/24"
-  "https://api.wikimedia.org/feed/v1/wikipedia/fr/onthisday/events/03/24"
-  "https://api.wikimedia.org/feed/v1/wikipedia/fr/onthisday/holidays/03/24"
 )
 
 echo "HTTP → URL (timeout ${MAX_SEC}s)"

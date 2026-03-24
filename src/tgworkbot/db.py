@@ -462,6 +462,11 @@ class Db:
                 (day, headline, url, fetched_at),
             )
 
+    def delete_history_day_cache_row(self, *, day: str) -> None:
+        """Supprime l’entrée du jour (ex. après erreur API transitoire, pour permettre un retry)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM history_day_cache WHERE day=?", (day,))
+
     def get_finance_cache_ready(self, *, day: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = conn.execute(
