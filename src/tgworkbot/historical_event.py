@@ -332,7 +332,7 @@ def _pick_best_event(
         if not text or _is_hard_excluded(text):
             continue
         year_i = _parse_event_year(ev)
-        recurring = _is_recurring_no_year(text)
+        recurring = _is_recurring_no_year(text=text)
         if year_i is None and not recurring:
             continue
         sc = _score_candidate(text=text, year=year_i, from_selected=from_sel, current_year=current_year)
