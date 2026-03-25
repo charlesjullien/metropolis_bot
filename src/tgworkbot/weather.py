@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from typing import Iterable
 
 import httpx
@@ -45,7 +45,7 @@ def _get_cached_summary(*, cache_key: str) -> WeatherSummary | None:
     if not cached:
         return None
     fetched_at, summary = cached
-    if datetime.now(timezone.utc) - fetched_at > _WEATHER_CACHE_TTL:
+    if datetime.now(dt_timezone.utc) - fetched_at > _WEATHER_CACHE_TTL:
         return None
     return WeatherSummary(
         label=summary.label,
@@ -216,7 +216,7 @@ async def get_rain_summary_today(
         umbrella_sure=umbrella_sure,
         emoji=emoji,
     )
-    _weather_cache[cache_key] = (datetime.now(timezone.utc), summary)
+    _weather_cache[cache_key] = (datetime.now(dt_timezone.utc), summary)
     return summary
 
 
