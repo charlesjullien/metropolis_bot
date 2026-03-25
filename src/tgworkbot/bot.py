@@ -1668,12 +1668,31 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Faites /start d'abord.")
         return
     arg = _arg_text(update).strip()
+    # En mode webhook stateless (PythonAnywhere), `context.user_data` ne persiste pas entre requêtes,
+    # donc le flow en 2 messages n'est pas fiable. On privilégie /heure_notif HH:MM.
+    webhook_only = bool(context.application.bot_data.get("webhook_only"))
     if arg:
+        value = _parse_notif_time_input(arg)
+        if value is None:
+            await update.message.reply_text(
+                "Format invalide. Utilise <b>/heure_notif HH:MM</b> (minutes 00, 15, 30 ou 45). "
+                "Ex: <code>/heure_notif 07:30</code>.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        db.set_notif_time(update.effective_chat.id, value)
         await update.message.reply_text(
-            "Envoie seulement <b>/heure_notif</b> (sans heure sur la même ligne), "
-            "puis tape l'heure dans le <b>message suivant</b>.",
+            f"Heure de notification enregistrée : <b>{value}</b>.",
             parse_mode=ParseMode.HTML,
         )
+        return
+    if webhook_only:
+        await update.message.reply_text(
+            "Sur l’hébergement actuel, envoie l’heure sur la <b>même ligne</b>.\n\n"
+            "Exemples : <code>/heure_notif 07:00</code>, <code>/heure_notif 12:30</code>, <code>/heure_notif 22:45</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     context.user_data["heure_notif_flow"] = "await_input"
     context.user_data.pop("heure_notif_pending", None)
