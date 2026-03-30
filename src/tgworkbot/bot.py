@@ -35,6 +35,63 @@ from tgworkbot.weather import format_rain_summary, geocode_first, get_rain_summa
 LOG: Final = logging.getLogger("tgworkbot")
 
 
+def _is_webhook_stateless(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    return bool(context.application.bot_data.get("webhook_only"))
+
+
+def _ud_get(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    db: Db,
+    chat_id: int,
+    key: str,
+    default=None,
+):
+    if not _is_webhook_stateless(context):
+        return context.user_data.get(key, default)
+    data = db.get_user_data(chat_id)
+    return data.get(key, default)
+
+
+def _ud_set(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    db: Db,
+    chat_id: int,
+    key: str,
+    value,
+) -> None:
+    if not _is_webhook_stateless(context):
+        context.user_data[key] = value
+        return
+    data = db.get_user_data(chat_id)
+    data[key] = value
+    db.set_user_data(chat_id, data)
+
+
+def _ud_pop(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    db: Db,
+    chat_id: int,
+    key: str,
+    default=None,
+):
+    if not _is_webhook_stateless(context):
+        return context.user_data.pop(key, default)
+    data = db.get_user_data(chat_id)
+    out = data.pop(key, default)
+    db.set_user_data(chat_id, data)
+    return out
+
+
+def _ud_clear(*, context: ContextTypes.DEFAULT_TYPE, db: Db, chat_id: int) -> None:
+    if not _is_webhook_stateless(context):
+        context.user_data.clear()
+        return
+    db.set_user_data(chat_id, {})
+
+
 def _is_bot_admin(update: Update, cfg) -> bool:
     if cfg.bot_admin_telegram_id is None:
         return False
@@ -68,6 +125,7 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "",
         "📜 Histoire :",
         "/evenement_historique",
+        "",
         "💹 Cours dans la notif :",
         "/cours_finance",
         "",
@@ -266,22 +324,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(_start_menu_text(is_admin=_is_bot_admin(update, cfg)))
 
 
-def _setup_flow(context: ContextTypes.DEFAULT_TYPE) -> dict | None:
-    flow = context.user_data.get("setup_flow")
+def _setup_flow(*, context: ContextTypes.DEFAULT_TYPE, db: Db, chat_id: int) -> dict | None:
+    flow = _ud_get(context=context, db=db, chat_id=chat_id, key="setup_flow")
     if isinstance(flow, dict) and flow.get("active"):
         return flow
     return None
 
 
-def _setup_set_step(context: ContextTypes.DEFAULT_TYPE, step: str) -> None:
-    flow = _setup_flow(context) or {}
+def _setup_set_step(*, context: ContextTypes.DEFAULT_TYPE, db: Db, chat_id: int, step: str) -> None:
+    flow = _setup_flow(context=context, db=db, chat_id=chat_id) or {}
     flow["active"] = True
     flow["step"] = step
-    context.user_data["setup_flow"] = flow
+    _ud_set(context=context, db=db, chat_id=chat_id, key="setup_flow", value=flow)
 
 
-def _setup_finish(context: ContextTypes.DEFAULT_TYPE) -> None:
-    context.user_data.pop("setup_flow", None)
+def _setup_finish(*, context: ContextTypes.DEFAULT_TYPE, db: Db, chat_id: int) -> None:
+    _ud_pop(context=context, db=db, chat_id=chat_id, key="setup_flow", default=None)
 
 
 def _parse_yes_no(text: str) -> bool | None:
@@ -369,7 +427,9 @@ async def _handle_heure_notif_standalone_text(
     update: Update, context: ContextTypes.DEFAULT_TYPE, *, text: str
 ) -> None:
     """Suite à /heure_notif : saisie de l'heure puis confirmation par boutons."""
-    if context.user_data.get("heure_notif_flow") == "await_confirm":
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    if _ud_get(context=context, db=db, chat_id=chat_id, key="heure_notif_flow") == "await_confirm":
         await update.message.reply_text(
             "Utilise les boutons <b>Oui</b> / <b>Non</b> sous le message précédent, "
             "ou envoie <b>/heure_notif</b> pour recommencer.",
@@ -390,8 +450,8 @@ async def _handle_heure_notif_standalone_text(
         await update.message.reply_text(verr)
         return
     value = f"{hh:02d}:{mm:02d}"
-    context.user_data["heure_notif_pending"] = value
-    context.user_data["heure_notif_flow"] = "await_confirm"
+    _ud_set(context=context, db=db, chat_id=chat_id, key="heure_notif_pending", value=value)
+    _ud_set(context=context, db=db, chat_id=chat_id, key="heure_notif_flow", value="await_confirm")
     await update.message.reply_text(
         f"Confirmer <b>{value}</b> comme heure quotidienne des notifications ?",
         parse_mode=ParseMode.HTML,
@@ -418,25 +478,27 @@ def _format_finance_block_html(fin: str) -> str:
 async def _setup_after_segment_completed(
     *,
     context: ContextTypes.DEFAULT_TYPE,
+    db: Db,
+    chat_id: int,
     message,
     seg_key: str,
 ) -> None:
-    if not _setup_flow(context):
+    if not _setup_flow(context=context, db=db, chat_id=chat_id):
         return
     if seg_key == "segment0":
-        _setup_set_step(context, "ask_change_1")
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step="ask_change_1")
         await message.reply_text("As-tu un changement ? (oui/non)", reply_markup=ForceReply(selective=True))
         return
     if seg_key == "segment1":
-        _setup_set_step(context, "ask_change_2")
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step="ask_change_2")
         await message.reply_text("As-tu un 2e changement ? (oui/non)", reply_markup=ForceReply(selective=True))
         return
     if seg_key == "segment2":
-        _setup_set_step(context, "ask_change_3")
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step="ask_change_3")
         await message.reply_text("As-tu un 3e changement ? (oui/non)", reply_markup=ForceReply(selective=True))
         return
     if seg_key == "segment3":
-        _setup_set_step(context, "await_meteo")
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_meteo")
         await message.reply_text(
             "Lieu météo (équivalent /lieuMeteo) : envoie une ville ou lat,lon.",
             reply_markup=ForceReply(selective=True, input_field_placeholder="Paris ou 48.8566,2.3522"),
@@ -454,7 +516,7 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Impossible d'initialiser ton profil, réessaie.")
         return
 
-    _setup_set_step(context, "await_depart")
+    _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_depart")
     await update.message.reply_text(
         "Setup guidé démarré.\n"
         "Étape 1/6: envoie ta station de départ (je lance l'équivalent de /depart automatiquement).",
@@ -482,7 +544,9 @@ async def _start_segment_flow_from_text(
 
     if not hasattr(provider, "suggest_stop_areas"):
         await update.message.reply_text(f"OK. Station enregistrée: {arg} (texte)")
-        await _setup_after_segment_completed(context=context, message=update.message, seg_key=seg_key)
+        await _setup_after_segment_completed(
+            context=context, db=db, chat_id=chat_id, message=update.message, seg_key=seg_key
+        )
         return
     try:
         items = await provider.suggest_stop_areas(query=arg)  # type: ignore[attr-defined]
@@ -490,11 +554,19 @@ async def _start_segment_flow_from_text(
         items = []
     if not items:
         await update.message.reply_text(f"OK. Station enregistrée: {arg} (texte)")
-        await _setup_after_segment_completed(context=context, message=update.message, seg_key=seg_key)
+        await _setup_after_segment_completed(
+            context=context, db=db, chat_id=chat_id, message=update.message, seg_key=seg_key
+        )
         return
 
     key = f"{seg_key}_station_suggestions"
-    context.user_data[key] = {it.id: it.label for it in items}
+    _ud_set(
+        context=context,
+        db=db,
+        chat_id=chat_id,
+        key=key,
+        value={it.id: it.label for it in items},
+    )
     keyboard = [
         [InlineKeyboardButton(it.label, callback_data=f"seg:{seg_key}:station:{it.id}")]
         for it in items
@@ -503,8 +575,8 @@ async def _start_segment_flow_from_text(
         "Choisis la station exacte :",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
-    if _setup_flow(context):
-        _setup_set_step(context, f"await_{seg_key}_direction")
+    if _setup_flow(context=context, db=db, chat_id=chat_id):
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step=f"await_{seg_key}_direction")
 
 
 def _evenement_historique_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
@@ -522,6 +594,10 @@ def _finance_from_user(user) -> set[str]:
 
 
 def _finance_from_context(context: ContextTypes.DEFAULT_TYPE, user) -> set[str]:
+    # En mode webhook stateless, `context.user_data` peut ne pas persister entre requêtes.
+    # Pour éviter de "perdre" les choix au clic, on se base uniquement sur la DB.
+    if bool(context.application.bot_data.get("webhook_only")):
+        return _finance_from_user(user)
     draft = context.user_data.get("finance_draft")
     if isinstance(draft, list):
         return {str(x) for x in draft if str(x) in _FINANCE_KEY_SET}
@@ -545,12 +621,15 @@ def _finance_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
 
 async def cmd_cours_finance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Db = context.application.bot_data["db"]
-    user = db.get_user(update.effective_chat.id)
+    chat_id = update.effective_chat.id
+    user = db.get_user(chat_id)
     if not user:
         await update.message.reply_text("Faites /start d'abord.")
         return
     selected = _finance_from_context(context, user)
-    context.user_data["finance_draft"] = sorted(selected)
+    # Draft only useful when we have in-memory state (polling / long-running process).
+    if not bool(context.application.bot_data.get("webhook_only")):
+        _ud_set(context=context, db=db, chat_id=chat_id, key="finance_draft", value=sorted(selected))
     await update.message.reply_text(
         "Choisis les cours à afficher dans la notif (données Yahoo Finance) :",
         reply_markup=_finance_keyboard(selected),
@@ -693,7 +772,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not text or text.startswith("/"):
         return
 
-    if context.user_data.get("heure_notif_flow") in ("await_input", "await_confirm"):
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+
+    if _ud_get(context=context, db=db, chat_id=chat_id, key="heure_notif_flow") in ("await_input", "await_confirm"):
         await _handle_heure_notif_standalone_text(update, context, text=text)
         return
 
@@ -704,12 +786,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if await _handle_rer_headsign_text(update, context):
         return
 
-    flow = _setup_flow(context)
+    flow = _setup_flow(context=context, db=db, chat_id=chat_id)
     if not flow:
         return
     step = str(flow.get("step") or "")
-    db: Db = context.application.bot_data["db"]
-    chat_id = update.effective_chat.id
     user = db.get_user(chat_id)
     if not user:
         db.upsert_user(chat_id)
@@ -728,10 +808,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Réponds par oui ou non.")
             return
         if yn:
-            _setup_set_step(context, "await_change_1")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_change_1")
             await update.message.reply_text("Indique la station du changement 1 :", reply_markup=ForceReply(selective=True))
         else:
-            _setup_set_step(context, "await_meteo")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_meteo")
             await update.message.reply_text("Lieu météo (ville ou lat,lon) :", reply_markup=ForceReply(selective=True))
         return
     if step == "await_change_1":
@@ -745,10 +825,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Réponds par oui ou non.")
             return
         if yn:
-            _setup_set_step(context, "await_change_2")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_change_2")
             await update.message.reply_text("Indique la station du changement 2 :", reply_markup=ForceReply(selective=True))
         else:
-            _setup_set_step(context, "await_meteo")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_meteo")
             await update.message.reply_text("Lieu météo (ville ou lat,lon) :", reply_markup=ForceReply(selective=True))
         return
     if step == "await_change_2":
@@ -762,10 +842,10 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Réponds par oui ou non.")
             return
         if yn:
-            _setup_set_step(context, "await_change_3")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_change_3")
             await update.message.reply_text("Indique la station du changement 3 :", reply_markup=ForceReply(selective=True))
         else:
-            _setup_set_step(context, "await_meteo")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_meteo")
             await update.message.reply_text("Lieu météo (ville ou lat,lon) :", reply_markup=ForceReply(selective=True))
         return
     if step == "await_change_3":
@@ -777,9 +857,17 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         ok = await _set_meteo_from_arg(update=update, context=context, arg=text)
         if not ok:
             return
-        _setup_set_step(context, "await_finance_click")
+        _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_finance_click")
         selected = _finance_from_context(context, user)
-        context.user_data["finance_draft"] = sorted(selected)
+        # Draft only useful when we have in-memory state (polling / long-running process).
+        if not _is_webhook_stateless(context):
+            _ud_set(
+                context=context,
+                db=db,
+                chat_id=chat_id,
+                key="finance_draft",
+                value=sorted(selected),
+            )
         await update.message.reply_text(
             "Choisis les cours à afficher (clique puis Valider) :",
             reply_markup=_finance_keyboard(selected),
@@ -799,7 +887,7 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
         value = f"{hh:02d}:{mm:02d}"
         db.set_notif_time(chat_id, value)
-        _setup_finish(context)
+        _setup_finish(context=context, db=db, chat_id=chat_id)
         await update.message.reply_text(
             f"Setup terminé ✅ (heure: {value})\n"
             "Tu peux vérifier avec /status et tester avec /simul_notif."
@@ -1017,6 +1105,10 @@ def _modes_from_user(user) -> set[str]:
     return {x.strip() for x in raw.split(",") if x.strip()}
 
 def _modes_from_context(context: ContextTypes.DEFAULT_TYPE, user) -> set[str]:
+    # En mode webhook stateless, `context.user_data` peut ne pas persister entre requêtes.
+    # On se base donc sur la DB (user.allowed_modes) pour éviter de "perdre" les clics.
+    if _is_webhook_stateless(context):
+        return _modes_from_user(user)
     draft = context.user_data.get("modes_draft")
     if isinstance(draft, list):
         return {str(x) for x in draft}
@@ -1038,17 +1130,21 @@ def _modes_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
 
 async def cmd_modes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Db = context.application.bot_data["db"]
-    user = db.get_user(update.effective_chat.id)
+    chat_id = update.effective_chat.id
+    user = db.get_user(chat_id)
     if not user:
         await update.message.reply_text("Faites /start d'abord.")
         return
     selected = _modes_from_context(context, user)
-    context.user_data["modes_draft"] = sorted(selected)
+    if not _is_webhook_stateless(context):
+        _ud_set(context=context, db=db, chat_id=chat_id, key="modes_draft", value=sorted(selected))
     await update.message.reply_text("Choisis les modes de transport :", reply_markup=_modes_keyboard(selected))
 
 
 async def _handle_segment_destination_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    pending = context.user_data.get("await_dest_segment")
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    pending = _ud_get(context=context, db=db, chat_id=chat_id, key="await_dest_segment")
     if not pending or not isinstance(pending, dict):
         return False
     if not update.message or not update.message.text:
@@ -1058,14 +1154,12 @@ async def _handle_segment_destination_query(update: Update, context: ContextType
         return False
     seg_key = pending.get("seg_key")
     if not seg_key or not isinstance(seg_key, str):
-        context.user_data.pop("await_dest_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
         return False
     provider = context.application.bot_data["transit_provider"]
-    db: Db = context.application.bot_data["db"]
-    chat_id = update.effective_chat.id
     user = db.get_user(chat_id)
     if not user or not hasattr(provider, "suggest_stop_areas"):
-        context.user_data.pop("await_dest_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
         await update.message.reply_text("Impossible de chercher cette station pour le moment.")
         return True
     try:
@@ -1078,8 +1172,14 @@ async def _handle_segment_destination_query(update: Update, context: ContextType
         )
         return True
     cache_key = f"{seg_key}_dest_station_suggestions"
-    context.user_data[cache_key] = {it.id: it.label for it in items}
-    context.user_data.pop("await_dest_segment", None)
+    _ud_set(
+        context=context,
+        db=db,
+        chat_id=chat_id,
+        key=cache_key,
+        value={it.id: it.label for it in items},
+    )
+    _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
     keyboard = [
         [InlineKeyboardButton(it.label, callback_data=f"seg:{seg_key}:dest_station:{it.id}")]
         for it in items
@@ -1094,7 +1194,9 @@ async def _handle_segment_destination_query(update: Update, context: ContextType
 
 async def _handle_rer_headsign_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Saisie manuelle de la tête de ligne RER si /journeys n'en a pas proposé."""
-    seg_key = context.user_data.get("await_rer_headsign_segment")
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    seg_key = _ud_get(context=context, db=db, chat_id=chat_id, key="await_rer_headsign_segment")
     if not seg_key or not isinstance(seg_key, str):
         return False
     if not update.message or not update.message.text:
@@ -1102,20 +1204,18 @@ async def _handle_rer_headsign_text(update: Update, context: ContextTypes.DEFAUL
     raw = update.message.text.strip()
     if not raw or raw.startswith("/"):
         return False
-    pending = context.user_data.get(f"{seg_key}_rer_pending_dest")
+    pending = _ud_get(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_pending_dest")
     if not isinstance(pending, dict):
-        context.user_data.pop("await_rer_headsign_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_rer_headsign_segment", default=None)
         return True
     dest_id = pending.get("id")
     dest_label = pending.get("label")
     if not dest_id or not dest_label:
-        context.user_data.pop("await_rer_headsign_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_rer_headsign_segment", default=None)
         return True
-    db: Db = context.application.bot_data["db"]
-    chat_id = update.effective_chat.id
     user = db.get_user(chat_id)
     if user is None:
-        context.user_data.pop("await_rer_headsign_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_rer_headsign_segment", default=None)
         return True
     _set_segment_destination(
         db,
@@ -1126,19 +1226,23 @@ async def _handle_rer_headsign_text(update: Update, context: ContextTypes.DEFAUL
         dest_sa_label=str(dest_label),
         direction_hints=[raw],
     )
-    context.user_data.pop("await_rer_headsign_segment", None)
-    context.user_data.pop(f"{seg_key}_rer_pending_dest", None)
-    context.user_data.pop(f"{seg_key}_rer_headsings", None)
+    _ud_pop(context=context, db=db, chat_id=chat_id, key="await_rer_headsign_segment", default=None)
+    _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_pending_dest", default=None)
+    _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_headsings", default=None)
     await update.message.reply_text(
         f"Tête de ligne enregistrée pour {seg_key} (vers {dest_label}) : {raw}"
     )
-    await _setup_after_segment_completed(context=context, message=update.message, seg_key=seg_key)
+    await _setup_after_segment_completed(
+        context=context, db=db, chat_id=chat_id, message=update.message, seg_key=seg_key
+    )
     return True
 
 
 async def _handle_segment_line_direction_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Saisie texte de la direction (métro / tram) quand les routes API n'ont rien listé."""
-    seg_key = context.user_data.get("await_line_direction_segment")
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    seg_key = _ud_get(context=context, db=db, chat_id=chat_id, key="await_line_direction_segment")
     if not seg_key or not isinstance(seg_key, str):
         return False
     if not update.message or not update.message.text:
@@ -1146,18 +1250,18 @@ async def _handle_segment_line_direction_text(update: Update, context: ContextTy
     raw = update.message.text.strip()
     if not raw or raw.startswith("/"):
         return False
-    db: Db = context.application.bot_data["db"]
-    chat_id = update.effective_chat.id
     user = db.get_user(chat_id)
     if user is None:
-        context.user_data.pop("await_line_direction_segment", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_line_direction_segment", default=None)
         return True
     _set_segment_direction(
         db, chat_id, user, seg_key, direction_id="text", direction_label=raw
     )
-    context.user_data.pop("await_line_direction_segment", None)
+    _ud_pop(context=context, db=db, chat_id=chat_id, key="await_line_direction_segment", default=None)
     await update.message.reply_text(f"Direction enregistrée pour {seg_key}: {raw}")
-    await _setup_after_segment_completed(context=context, message=update.message, seg_key=seg_key)
+    await _setup_after_segment_completed(
+        context=context, db=db, chat_id=chat_id, message=update.message, seg_key=seg_key
+    )
     return True
 
 
@@ -1187,21 +1291,25 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         label = sa_id
         if which == "depart":
-            label = (context.user_data.get("depart_suggestions") or {}).get(sa_id, sa_id)
+            label = (_ud_get(context=context, db=db, chat_id=chat_id, key="depart_suggestions") or {}).get(
+                sa_id, sa_id
+            )
         elif which == "arrivee":
-            label = (context.user_data.get("arrivee_suggestions") or {}).get(sa_id, sa_id)
+            label = (_ud_get(context=context, db=db, chat_id=chat_id, key="arrivee_suggestions") or {}).get(
+                sa_id, sa_id
+            )
 
         if which == "depart":
             db.set_depart_stop_area(chat_id, sa_id=sa_id, sa_label=label)
             await q.edit_message_text(f"Départ enregistré: {label}\n\nChoisis tes modes :")
             # reset draft on new selection
-            context.user_data.pop("modes_draft", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="modes_draft", default=None)
             await q.message.reply_text("Choisis tes modes de transport :", reply_markup=_modes_keyboard(_modes_from_user(user)))
             return
         if which == "arrivee":
             db.set_arrivee_stop_area(chat_id, sa_id=sa_id, sa_label=label)
             await q.edit_message_text(f"Arrivée enregistrée: {label}\n\nChoisis tes modes :")
-            context.user_data.pop("modes_draft", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="modes_draft", default=None)
             await q.message.reply_text("Choisis tes modes de transport :", reply_markup=_modes_keyboard(_modes_from_user(user)))
             return
 
@@ -1222,7 +1330,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if what == "station":
             # retrouver le label depuis le cache user_data
             cache_key = f"{seg_key}_station_suggestions"
-            label = (context.user_data.get(cache_key) or {}).get(ident, ident)
+            label = (_ud_get(context=context, db=db, chat_id=chat_id, key=cache_key) or {}).get(
+                ident, ident
+            )
+            # Fallback: if cache missing, resolve label from provider by id.
+            if label == ident and hasattr(provider, "get_stop_area_label"):
+                try:
+                    maybe = await provider.get_stop_area_label(stop_area_id=ident)  # type: ignore[attr-defined]
+                except Exception:
+                    maybe = None
+                if maybe:
+                    label = maybe
             _set_segment_station(db, chat_id, user, seg_key, sa_id=ident, sa_label=label)
             await q.edit_message_text(f"Station enregistrée pour {seg_key}: {label}")
             # Enchaîner avec le choix de la ligne
@@ -1233,9 +1351,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     lines = []
                 if lines:
                     line_cache_key = f"{seg_key}_line_labels"
-                    context.user_data[line_cache_key] = {
+                    _ud_set(
+                        context=context,
+                        db=db,
+                        chat_id=chat_id,
+                        key=line_cache_key,
+                        value={
                         lid: {"label": lab, "commercial_mode": cm} for lid, lab, cm in lines
-                    }
+                        },
+                    )
                     keyboard = [
                         [
                             InlineKeyboardButton(
@@ -1250,7 +1374,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         reply_markup=InlineKeyboardMarkup(keyboard),
                     )
                 else:
-                    await _setup_after_segment_completed(context=context, message=q.message, seg_key=seg_key)
+                    await _setup_after_segment_completed(
+                        context=context, db=db, chat_id=chat_id, message=q.message, seg_key=seg_key
+                    )
             return
 
         if what == "line":
@@ -1262,7 +1388,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 return
             sa_id = seg["stop_area_id"]
             line_cache_key = f"{seg_key}_line_labels"
-            meta = (context.user_data.get(line_cache_key) or {}).get(ident)
+            meta = (_ud_get(context=context, db=db, chat_id=chat_id, key=line_cache_key) or {}).get(ident)
             if isinstance(meta, dict):
                 label = str(meta.get("label") or ident)
                 cm = str(meta.get("commercial_mode") or "")
@@ -1271,16 +1397,22 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 cm = ""
             _set_segment_line(db, chat_id, user, seg_key, line_id=ident, line_label=label, commercial_mode=cm)
             await q.edit_message_text(f"Ligne enregistrée pour {seg_key}: {label}")
-            context.user_data.pop("await_line_direction_segment", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="await_line_direction_segment", default=None)
             if line_is_rer(commercial_mode=cm, line_label=label):
-                context.user_data["await_dest_segment"] = {"seg_key": seg_key, "line_id": ident}
+                _ud_set(
+                    context=context,
+                    db=db,
+                    chat_id=chat_id,
+                    key="await_dest_segment",
+                    value={"seg_key": seg_key, "line_id": ident},
+                )
                 await q.message.reply_text(
                     "Écris le nom de la station où tu veux aller sur cette ligne "
                     "(destination, pas seulement le texte affiché sur un écran « direction »).",
                     reply_markup=ForceReply(selective=True),
                 )
             else:
-                context.user_data.pop("await_dest_segment", None)
+                _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
                 dirs: list[str] = []
                 if hasattr(provider, "list_directions_for_stop_area_line"):
                     try:
@@ -1291,7 +1423,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         dirs = []
                 if dirs:
                     dir_cache_key = f"{seg_key}_direction_labels"
-                    context.user_data[dir_cache_key] = {str(i): d for i, d in enumerate(dirs)}
+                    _ud_set(
+                        context=context,
+                        db=db,
+                        chat_id=chat_id,
+                        key=dir_cache_key,
+                        value={str(i): d for i, d in enumerate(dirs)},
+                    )
                     keyboard = [
                         [InlineKeyboardButton(d, callback_data=f"seg:{seg_key}:direction:{i}")]
                         for i, d in enumerate(dirs)
@@ -1301,7 +1439,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         reply_markup=InlineKeyboardMarkup(keyboard),
                     )
                 else:
-                    context.user_data["await_line_direction_segment"] = seg_key
+                    _ud_set(
+                        context=context,
+                        db=db,
+                        chat_id=chat_id,
+                        key="await_line_direction_segment",
+                        value=seg_key,
+                    )
                     await q.message.reply_text(
                         "Écris la direction (terminus affiché sur le quai), ex: Porte de Clignancourt",
                         reply_markup=ForceReply(selective=True),
@@ -1310,12 +1454,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if what == "dest_station":
             cache_key = f"{seg_key}_dest_station_suggestions"
-            dest_label = (context.user_data.get(cache_key) or {}).get(ident, ident)
+            dest_label = (_ud_get(context=context, db=db, chat_id=chat_id, key=cache_key) or {}).get(
+                ident, ident
+            )
             segments = _parse_segments_json(user)
             seg = next((s for s in segments if s.get("key") == seg_key), None)
             if not seg or not seg.get("stop_area_id") or not seg.get("line_id"):
                 await q.edit_message_text("Erreur: segment incomplet (station ou ligne manquante).")
-                context.user_data.pop("await_dest_segment", None)
+                _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
                 return
             origin_id = str(seg["stop_area_id"])
             line_id = str(seg["line_id"])
@@ -1332,7 +1478,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             user = db.get_user(chat_id)
             if user is None:
                 return
-            context.user_data.pop("await_dest_segment", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="await_dest_segment", default=None)
             await q.edit_message_text(f"Destination choisie pour {seg_key}: {dest_label}")
             if len(hints) == 1:
                 _set_segment_destination(
@@ -1344,16 +1490,30 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     dest_sa_label=dest_label,
                     direction_hints=hints,
                 )
-                context.user_data.pop(f"{seg_key}_rer_headsings", None)
-                context.user_data.pop(f"{seg_key}_rer_pending_dest", None)
+                _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_headsings", default=None)
+                _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_pending_dest", default=None)
                 await q.edit_message_text(
                     f"Enregistré pour {seg_key} : vers {dest_label}, tête de ligne {hints[0]}"
                 )
-                await _setup_after_segment_completed(context=context, message=q.message, seg_key=seg_key)
+                await _setup_after_segment_completed(
+                    context=context, db=db, chat_id=chat_id, message=q.message, seg_key=seg_key
+                )
                 return
             if not hints:
-                context.user_data[f"{seg_key}_rer_pending_dest"] = {"id": ident, "label": dest_label}
-                context.user_data["await_rer_headsign_segment"] = seg_key
+                _ud_set(
+                    context=context,
+                    db=db,
+                    chat_id=chat_id,
+                    key=f"{seg_key}_rer_pending_dest",
+                    value={"id": ident, "label": dest_label},
+                )
+                _ud_set(
+                    context=context,
+                    db=db,
+                    chat_id=chat_id,
+                    key="await_rer_headsign_segment",
+                    value=seg_key,
+                )
                 await q.message.reply_text(
                     "Je n'ai pas pu lister les têtes de ligne automatiquement. "
                     "Écris celle affichée au quai pour aller vers cette destination "
@@ -1361,8 +1521,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     reply_markup=ForceReply(selective=True),
                 )
                 return
-            context.user_data[f"{seg_key}_rer_headsings"] = hints
-            context.user_data[f"{seg_key}_rer_pending_dest"] = {"id": ident, "label": dest_label}
+            _ud_set(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_headsings", value=hints)
+            _ud_set(
+                context=context,
+                db=db,
+                chat_id=chat_id,
+                key=f"{seg_key}_rer_pending_dest",
+                value={"id": ident, "label": dest_label},
+            )
             keyboard = [
                 [InlineKeyboardButton(h[:64], callback_data=f"seg:{seg_key}:rer_headsign:{i}")]
                 for i, h in enumerate(hints)
@@ -1375,8 +1541,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         if what == "rer_headsign":
-            headsigns = context.user_data.get(f"{seg_key}_rer_headsings") or []
-            pending = context.user_data.get(f"{seg_key}_rer_pending_dest") or {}
+            headsigns = _ud_get(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_headsings") or []
+            pending = _ud_get(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_pending_dest") or {}
             try:
                 idx = int(ident)
             except ValueError:
@@ -1403,15 +1569,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 dest_sa_label=str(dest_label),
                 direction_hints=[chosen],
             )
-            context.user_data.pop(f"{seg_key}_rer_headsings", None)
-            context.user_data.pop(f"{seg_key}_rer_pending_dest", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_headsings", default=None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key=f"{seg_key}_rer_pending_dest", default=None)
             await q.edit_message_text(f"Tête de ligne enregistrée pour {seg_key}: {chosen}")
-            await _setup_after_segment_completed(context=context, message=q.message, seg_key=seg_key)
+            await _setup_after_segment_completed(
+                context=context, db=db, chat_id=chat_id, message=q.message, seg_key=seg_key
+            )
             return
 
         if what == "direction":
             dir_cache_key = f"{seg_key}_direction_labels"
-            label = (context.user_data.get(dir_cache_key) or {}).get(ident, "")
+            label = (_ud_get(context=context, db=db, chat_id=chat_id, key=dir_cache_key) or {}).get(ident, "")
             if not label:
                 label = ident
             _set_segment_direction(
@@ -1423,7 +1591,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 direction_label=label,
             )
             await q.edit_message_text(f"Direction enregistrée pour {seg_key}: {label}")
-            await _setup_after_segment_completed(context=context, message=q.message, seg_key=seg_key)
+            await _setup_after_segment_completed(
+                context=context, db=db, chat_id=chat_id, message=q.message, seg_key=seg_key
+            )
             return
 
     if data.startswith("hnf:"):
@@ -1435,8 +1605,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         action = parts[1]
         if action == "n":
-            context.user_data.pop("heure_notif_flow", None)
-            context.user_data.pop("heure_notif_pending", None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="heure_notif_flow", default=None)
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="heure_notif_pending", default=None)
             try:
                 await q.edit_message_text(
                     "Annulé. Envoie /heure_notif quand tu veux choisir une heure."
@@ -1457,12 +1627,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.answer("Heure invalide.", show_alert=True)
             return
         value = f"{hh:02d}:{mm:02d}"
-        if context.user_data.get("heure_notif_pending") != value:
+        if _ud_get(context=context, db=db, chat_id=chat_id, key="heure_notif_pending") != value:
             await q.answer("Session expirée : envoie /heure_notif à nouveau.", show_alert=True)
             return
         db.set_notif_time(chat_id, value)
-        context.user_data.pop("heure_notif_flow", None)
-        context.user_data.pop("heure_notif_pending", None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="heure_notif_flow", default=None)
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="heure_notif_pending", default=None)
         try:
             await q.edit_message_text(
                 f"Heure de notification enregistrée : <b>{value}</b>.",
@@ -1481,9 +1651,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         db.set_recevoir_evenement_historique(chat_id, enabled)
         label = "activée" if enabled else "désactivée"
         await q.edit_message_text(f"Événement historique : option {label}.")
-        flow = _setup_flow(context)
+        flow = _setup_flow(context=context, db=db, chat_id=chat_id)
         if flow and str(flow.get("step") or "") == "await_evenement_historique_click" and q.message:
-            _setup_set_step(context, "await_notif_time")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
             await q.message.reply_text(
                 "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
                 parse_mode=ParseMode.HTML,
@@ -1503,7 +1673,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             selected.remove(key)
         else:
             selected.add(key)
-        context.user_data["finance_draft"] = sorted(selected)
+        if bool(context.application.bot_data.get("webhook_only")):
+            raw = ",".join(sorted(selected)) if selected else None
+            db.set_finance_selection(chat_id, raw)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(
+                context=context,
+                db=db,
+                chat_id=chat_id,
+                key="finance_draft",
+                value=sorted(selected),
+            )
         try:
             await q.edit_message_reply_markup(reply_markup=_finance_keyboard(selected))
         except BadRequest as e:
@@ -1513,7 +1694,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "fin:all":
         selected = {k for k, _ in FINANCE_OPTIONS}
-        context.user_data["finance_draft"] = sorted(selected)
+        if bool(context.application.bot_data.get("webhook_only")):
+            raw = ",".join(sorted(selected)) if selected else None
+            db.set_finance_selection(chat_id, raw)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(
+                context=context,
+                db=db,
+                chat_id=chat_id,
+                key="finance_draft",
+                value=sorted(selected),
+            )
         try:
             await q.edit_message_reply_markup(reply_markup=_finance_keyboard(selected))
         except BadRequest as e:
@@ -1523,7 +1715,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "fin:none":
         selected: set[str] = set()
-        context.user_data["finance_draft"] = []
+        if bool(context.application.bot_data.get("webhook_only")):
+            db.set_finance_selection(chat_id, None)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="finance_draft", value=[])
         try:
             await q.edit_message_reply_markup(reply_markup=_finance_keyboard(selected))
         except BadRequest as e:
@@ -1535,13 +1731,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         selected = _finance_from_context(context, user)
         raw = ",".join(sorted(selected)) if selected else None
         db.set_finance_selection(chat_id, raw)
-        context.user_data.pop("finance_draft", None)
-        flow = _setup_flow(context)
+        if not bool(context.application.bot_data.get("webhook_only")):
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="finance_draft", default=None)
+        flow = _setup_flow(context=context, db=db, chat_id=chat_id)
         in_setup_finance = bool(flow and str(flow.get("step") or "") == "await_finance_click")
         if not selected:
             await q.edit_message_text("Aucun indice choisi : le bloc « cours des indices » est désactivé.")
             if in_setup_finance and q.message:
-                _setup_set_step(context, "await_evenement_historique_click")
+                _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_evenement_historique_click")
                 await q.message.reply_text(
                     "Veux-tu un <b>événement historique</b> dans la notification ?",
                     parse_mode=ParseMode.HTML,
@@ -1553,7 +1750,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "Cours enregistrés : " + ", ".join(labels[k] for k in sorted(selected))
         )
         if in_setup_finance and q.message:
-            _setup_set_step(context, "await_evenement_historique_click")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_evenement_historique_click")
             await q.message.reply_text(
                 "Veux-tu un <b>événement historique</b> dans la notification ?",
                 parse_mode=ParseMode.HTML,
@@ -1568,8 +1765,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             selected.remove(mode)
         else:
             selected.add(mode)
-        # store draft in user_data
-        context.user_data["modes_draft"] = sorted(selected)
+        if _is_webhook_stateless(context):
+            db.set_allowed_modes(chat_id, ",".join(sorted(selected)) if selected else None)
+            user = db.get_user(chat_id) or user
+        else:
+            # store draft in user_data
+            _ud_set(context=context, db=db, chat_id=chat_id, key="modes_draft", value=sorted(selected))
         try:
             await q.edit_message_reply_markup(reply_markup=_modes_keyboard(selected))
         except BadRequest as e:
@@ -1580,7 +1781,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "mode:all":
         selected = set(MODE_OPTIONS)
-        context.user_data["modes_draft"] = sorted(selected)
+        if _is_webhook_stateless(context):
+            db.set_allowed_modes(chat_id, ",".join(sorted(selected)) if selected else None)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="modes_draft", value=sorted(selected))
         try:
             await q.edit_message_reply_markup(reply_markup=_modes_keyboard(selected))
         except BadRequest as e:
@@ -1590,7 +1795,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "mode:none":
         selected: set[str] = set()
-        context.user_data["modes_draft"] = []
+        if _is_webhook_stateless(context):
+            db.set_allowed_modes(chat_id, None)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="modes_draft", value=[])
         try:
             await q.edit_message_reply_markup(reply_markup=_modes_keyboard(selected))
         except BadRequest as e:
@@ -1604,7 +1813,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.edit_message_text("Choisis au moins 1 mode (ex: Metro), puis Valider.")
             return
         db.set_allowed_modes(chat_id, ",".join(sorted(selected)))
-        context.user_data.pop("modes_draft", None)
+        if not _is_webhook_stateless(context):
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="modes_draft", default=None)
         await q.edit_message_text(f"Modes enregistrés: {', '.join(sorted(selected))}")
         return
 
@@ -1694,8 +1904,9 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    context.user_data["heure_notif_flow"] = "await_input"
-    context.user_data.pop("heure_notif_pending", None)
+    chat_id = update.effective_chat.id
+    _ud_set(context=context, db=db, chat_id=chat_id, key="heure_notif_flow", value="await_input")
+    _ud_pop(context=context, db=db, chat_id=chat_id, key="heure_notif_pending", default=None)
 
     await update.message.reply_text(
         "À quelle heure veux-tu recevoir la notification chaque jour ?\n\n"
@@ -1747,7 +1958,7 @@ async def cmd_reset_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     chat_id = update.effective_chat.id
     db.upsert_user(chat_id)
     db.reset_user_profile(chat_id)
-    context.user_data.clear()
+    _ud_clear(context=context, db=db, chat_id=chat_id)
     await update.message.reply_text(
         "Ton profil a été réinitialisé. Utilise /setup ou les commandes du menu pour reconfigurer."
     )

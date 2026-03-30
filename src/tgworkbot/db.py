@@ -111,6 +111,8 @@ class Db:
             add_col("last_notif_sent_key", "last_notif_sent_key TEXT")
             add_col("news_category", "news_category TEXT")
             add_col("finance_selection", "finance_selection TEXT")
+            # Persisted per-user ephemeral state (for webhook stateless mode).
+            add_col("user_data_json", "user_data_json TEXT")
 
             conn.execute(
                 """
@@ -258,6 +260,35 @@ class Db:
             news_category=row["news_category"] if "news_category" in row.keys() else None,
             finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
         )
+
+    # Webhook stateless helpers: persist ephemeral per-user state (like context.user_data).
+
+    def get_user_data(self, chat_id: int) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT user_data_json FROM users WHERE chat_id=?", (chat_id,)).fetchone()
+        if row is None:
+            return {}
+        raw = row["user_data_json"] if "user_data_json" in row.keys() else None
+        if raw is None:
+            return {}
+        try:
+            data = json.loads(str(raw))
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def set_user_data(self, chat_id: int, user_data: dict[str, Any] | None) -> None:
+        blob = json.dumps(user_data or {}, ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO users(chat_id, user_data_json) VALUES (?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    user_data_json=excluded.user_data_json,
+                    updated_at=datetime('now')
+                """.strip(),
+                (chat_id, blob),
+            )
 
     def iter_users(self) -> Iterable[UserPrefs]:
         with self._connect() as conn:

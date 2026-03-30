@@ -22,6 +22,10 @@ class TransitProvider:
     async def get_status(self, *, depart: str, direction: str | None) -> TransitStatus:
         raise NotImplementedError
 
+    async def get_stop_area_label(self, *, stop_area_id: str) -> str | None:
+        """Optional helper: resolve a stop_area id to a human label."""
+        return None
+
 
 class NotConfiguredProvider(TransitProvider):
     async def get_status(self, *, depart: str, direction: str | None) -> TransitStatus:
@@ -30,6 +34,9 @@ class NotConfiguredProvider(TransitProvider):
             headline="Transports: provider non configuré.",
             details="Ajoutez une clé (ex: IDFM_PRIM_API_KEY) pour activer la vérification des perturbations.",
         )
+
+    async def get_stop_area_label(self, *, stop_area_id: str) -> str | None:
+        return None
 
 
 class IdFmPrimNavitiaProvider(TransitProvider):
@@ -136,6 +143,40 @@ class IdFmPrimNavitiaProvider(TransitProvider):
             if len(uniq) >= 5:
                 break
         return uniq
+
+    async def get_stop_area_label(self, *, stop_area_id: str) -> str | None:
+        """
+        Resolves a Navitia stop_area id to a human-readable label.
+        Useful in webhook stateless mode when short-lived suggestion caches are missing.
+        """
+        sa = self._enc(stop_area_id)
+        paths = [
+            f"/stop_areas/{sa}",
+            f"/coverage/{self.coverage}/stop_areas/{sa}",
+        ]
+        for path in paths:
+            try:
+                data = await self._get(path, {"depth": "1"})
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (400, 404):
+                    continue
+                return None
+            except Exception:
+                return None
+            obj = data.get("stop_areas")
+            if isinstance(obj, list) and obj:
+                sa0 = obj[0]
+                if isinstance(sa0, dict):
+                    lab = sa0.get("label") or sa0.get("name")
+                    if isinstance(lab, str) and lab.strip():
+                        return lab.strip()
+            # some shapes may return a single stop_area object
+            sa1 = data.get("stop_area")
+            if isinstance(sa1, dict):
+                lab = sa1.get("label") or sa1.get("name")
+                if isinstance(lab, str) and lab.strip():
+                    return lab.strip()
+        return None
 
     async def _get_disruptions_for_stop_area(self, stop_area_id: str) -> list[dict]:
         # Depending on PRIM subscription/products, some endpoints may be unavailable.
