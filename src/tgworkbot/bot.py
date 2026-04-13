@@ -150,7 +150,7 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "💬 Citation inspirante :",
         "/citation_inspirante",
         "",
-        "⏰ Définir l'heure de réception de notification :",
+        "⏰ Définir l'heure de réception de notification (pas de 5 min, ex. 15:00 ou 15:05, pas 15:07) :",
         "/heure_notif",
         "",
         "📅 Choisir les jours de notification :",
@@ -426,6 +426,9 @@ def _parse_finance_text(text: str) -> set[str] | None:
 def _parse_notif_time_parts(text: str) -> tuple[int, int] | None:
     """Retourne (heure, minute) si le texte ressemble à une heure, sinon None."""
     raw = (text or "").strip().lower().replace("h", ":").replace(" ", "")
+    # « 15h » ou « 9h » → 15:00 / 9:00
+    if re.fullmatch(r"\d{1,2}:", raw):
+        raw = raw + "00"
     if raw.isdigit() and len(raw) in (3, 4):
         raw = raw.zfill(4)
         raw = f"{raw[0:2]}:{raw[2:4]}"
@@ -444,7 +447,11 @@ def _notif_time_validation_error(hh: int, mm: int) -> str | None:
     if not (0 <= hh <= 23):
         return "L'heure doit être entre 00 et 23 (horloge 24 h)."
     if mm % 5 != 0:
-        return "Les minutes doivent être un multiple de 5 (00, 05, 10, ..., 55)."
+        return (
+            "Les minutes doivent être au pas de 5 (00, 05, 10, …, 55). "
+            "Exemple : 15:07 n'est pas accepté — choisis plutôt 15:00 ou 15:05 "
+            "(tu peux aussi écrire 15h ou 15h05)."
+        )
     return None
 
 
@@ -475,7 +482,9 @@ async def _handle_heure_notif_standalone_text(
     parts = _parse_notif_time_parts(text)
     if parts is None:
         await update.message.reply_text(
-            "Je n'ai pas compris l'heure. Envoie par exemple <b>07:30</b>, <b>9h15</b> ou <b>2145</b>.",
+            "Je n'ai pas compris l'heure. Envoie une heure au <b>pas de 5 minutes</b> "
+            "(ex. <code>07:30</code>, <code>15h</code>, <code>15h05</code>, <code>9h15</code>). "
+            "Pas <code>15:07</code> : utilise <code>15:00</code> ou <code>15:05</code>.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -1016,7 +1025,8 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         parts = _parse_notif_time_parts(text)
         if parts is None:
             await update.message.reply_text(
-                "Format non reconnu. Exemples : 07:30, 22h35, 0900 (minutes par pas de 5)."
+                "Format non reconnu. Exemples au pas de 5 min : 07:30, 15h, 15h05, 22h35, 0900. "
+                "Pas 15:07 — mets 15:00 ou 15:05."
             )
             return
         hh, mm = parts
@@ -2003,7 +2013,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if in_setup_days and q.message:
                 _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
                 await q.message.reply_text(
-                    "Heure de notification : envoie <b>HH:MM</b> (minutes par pas de 5), ex. 07:30 ou 22:35.",
+                    "Heure de notification : <b>HH:MM</b> au pas de 5 minutes (00, 05, 10…). "
+                    "Ex. <code>15h</code> ou <code>15h05</code> ; pas <code>15:07</code> — mets <code>15:00</code> ou <code>15:05</code>.",
                     parse_mode=ParseMode.HTML,
                     reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
                 )
@@ -2015,7 +2026,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if in_setup_days and q.message:
             _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
             await q.message.reply_text(
-                "Heure de notification : envoie <b>HH:MM</b> (minutes par pas de 5), ex. 07:30 ou 22:35.",
+                "Heure de notification : <b>HH:MM</b> au pas de 5 minutes (00, 05, 10…). "
+                "Ex. <code>15h</code> ou <code>15h05</code> ; pas <code>15:07</code> — mets <code>15:00</code> ou <code>15:05</code>.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
             )
@@ -2148,8 +2160,9 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         value = _parse_notif_time_input(arg)
         if value is None:
             await update.message.reply_text(
-                "Format invalide. Utilise <b>/heure_notif HH:MM</b> (minutes par pas de 5). "
-                "Ex: <code>/heure_notif 07:30</code>.",
+                "Format invalide ou minutes interdites. Utilise <b>/heure_notif HH:MM</b> au "
+                "<b>pas de 5 minutes</b> (ex. <code>/heure_notif 15:00</code> ou "
+                "<code>/heure_notif 15:05</code>). Pas <code>15:07</code>.",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -2161,8 +2174,11 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     if webhook_only:
         await update.message.reply_text(
-            "Sur l’hébergement actuel, envoie l’heure sur la <b>même ligne</b>.\n\n"
-            "Exemples : <code>/heure_notif 07:00</code>, <code>/heure_notif 12:30</code>, <code>/heure_notif 22:45</code>",
+            "Sur l’hébergement actuel, envoie l’heure sur la <b>même ligne</b>, au "
+            "<b>pas de 5 minutes</b> (00, 05, 10…).\n\n"
+            "Exemples : <code>/heure_notif 15:00</code>, <code>/heure_notif 15:05</code>, "
+            "<code>/heure_notif 07:30</code>. Pas <code>15:07</code> — choisis "
+            "<code>15:00</code> ou <code>15:05</code>.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -2173,9 +2189,10 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     await update.message.reply_text(
         "À quelle heure veux-tu recevoir la notification chaque jour ?\n\n"
-        "Réponds avec l'heure en <b>HH:MM</b> (24 h). Les minutes doivent être "
-        "un <b>multiple de 5</b>.\n"
-        "Exemples : <code>07:00</code>, <code>12:35</code>, <code>22:55</code> — toute heure de la journée.",
+        "Réponds au <b>pas de 5 minutes</b> seulement (minutes : 00, 05, 10, …, 55). "
+        "Par exemple <code>15:07</code> n'est pas possible : mets <code>15:00</code> ou "
+        "<code>15:05</code> (tu peux aussi écrire <code>15h</code> ou <code>15h05</code>).\n\n"
+        "Autres exemples valides : <code>07:00</code>, <code>12:35</code>, <code>22:55</code>.",
         parse_mode=ParseMode.HTML,
         reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
     )
@@ -2189,7 +2206,9 @@ async def cmd_simul_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Faites /start d'abord.")
         return
     if not user.notif_time:
-        await update.message.reply_text("Configure d'abord /heure_notif (HH:MM).")
+        await update.message.reply_text(
+            "Configure d'abord /heure_notif (HH:MM au pas de 5 min, ex. 15:00 ou 15:05)."
+        )
         return
     text = await _render_notification_text_for_user(app=app, user=user)
     if not text:
