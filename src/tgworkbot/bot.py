@@ -2351,12 +2351,15 @@ async def _post_init(app: Application) -> None:
             LOG.info("JobQueue non disponible et scheduler interne désactivé (ENABLE_INTERNAL_NOTIF_SCHEDULER=0).")
 
 
-async def _configure_telegram_command_menu(app: Application) -> None:
+async def _configure_telegram_command_menu(app: Application, *, chat_id: int | None = None) -> None:
     # Configure Telegram command menu (icone à gauche du champ de saisie).
     # This enables clickable commands without requiring users to type /start first.
     try:
         await app.bot.set_my_commands(_telegram_menu_commands())
-        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        if chat_id is not None:
+            await app.bot.set_chat_menu_button(chat_id=chat_id, menu_button=MenuButtonCommands())
+        else:
+            await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
     except Exception:
         LOG.exception("unable to configure Telegram command menu")
 
@@ -2443,10 +2446,11 @@ async def process_one_webhook_update(*, cfg, db: Db, provider, update_body: dict
     app = build_telegram_application(cfg=cfg, db=db, provider=provider, webhook_only=True)
     async with app:
         await app.start()
+        upd = Update.de_json(update_body, app.bot)
         # In webhook manual lifecycle, post_init may not run as in run_polling/run_webhook.
         # Ensure Telegram command menu is configured here too.
-        await _configure_telegram_command_menu(app)
-        upd = Update.de_json(update_body, app.bot)
+        chat_id = upd.effective_chat.id if upd is not None and upd.effective_chat else None
+        await _configure_telegram_command_menu(app, chat_id=chat_id)
         if upd is not None:
             await app.process_update(upd)
         await app.stop()
