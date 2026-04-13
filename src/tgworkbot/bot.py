@@ -2338,13 +2338,7 @@ async def _notif_scheduler_loop(app: Application) -> None:
 
 
 async def _post_init(app: Application) -> None:
-    # Configure Telegram command menu (icone à gauche du champ de saisie).
-    # This enables clickable commands without requiring users to type /start first.
-    try:
-        await app.bot.set_my_commands(_telegram_menu_commands())
-        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    except Exception:
-        LOG.exception("unable to configure Telegram command menu")
+    await _configure_telegram_command_menu(app)
 
     if app.bot_data.get("webhook_only"):
         return
@@ -2355,6 +2349,16 @@ async def _post_init(app: Application) -> None:
             app.create_task(_notif_scheduler_loop(app))
         else:
             LOG.info("JobQueue non disponible et scheduler interne désactivé (ENABLE_INTERNAL_NOTIF_SCHEDULER=0).")
+
+
+async def _configure_telegram_command_menu(app: Application) -> None:
+    # Configure Telegram command menu (icone à gauche du champ de saisie).
+    # This enables clickable commands without requiring users to type /start first.
+    try:
+        await app.bot.set_my_commands(_telegram_menu_commands())
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception:
+        LOG.exception("unable to configure Telegram command menu")
 
 async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     err = context.error
@@ -2439,6 +2443,9 @@ async def process_one_webhook_update(*, cfg, db: Db, provider, update_body: dict
     app = build_telegram_application(cfg=cfg, db=db, provider=provider, webhook_only=True)
     async with app:
         await app.start()
+        # In webhook manual lifecycle, post_init may not run as in run_polling/run_webhook.
+        # Ensure Telegram command menu is configured here too.
+        await _configure_telegram_command_menu(app)
         upd = Update.de_json(update_body, app.bot)
         if upd is not None:
             await app.process_update(upd)
