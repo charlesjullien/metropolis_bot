@@ -36,18 +36,15 @@ LOG: Final = logging.getLogger("tgworkbot")
 def _telegram_menu_commands() -> list[BotCommand]:
     return [
         BotCommand("setup", "Configurer tout le bot"),
+        BotCommand("changer_mes_stations", "Modifier depart/changements"),
+        BotCommand("lieuMeteo", "Definir le lieu meteo"),
+        BotCommand("evenement_historique", "Activer/desactiver l'evenement historique"),
+        BotCommand("cours_finance", "Choisir les cours/indices"),
         BotCommand("status", "Voir ma configuration"),
         BotCommand("simul_notif", "Tester la notification complète"),
         BotCommand("heure_notif", "Définir l'heure de notification"),
         BotCommand("jours_notifs", "Choisir les jours de notification"),
-        BotCommand("depart", "Définir la station de départ"),
-        BotCommand("changement_1", "Définir changement 1"),
-        BotCommand("changement_2", "Définir changement 2"),
-        BotCommand("changement_3", "Définir changement 3"),
         BotCommand("modes", "Choisir les modes de transport"),
-        BotCommand("lieuMeteo", "Définir le lieu météo"),
-        BotCommand("cours_finance", "Choisir les cours/indices"),
-        BotCommand("evenement_historique", "Activer/désactiver l'événement historique"),
         BotCommand("infos_transports", "Voir les infos transport"),
         BotCommand("perturbations", "Voir les perturbations"),
         BotCommand("reset_all", "Réinitialiser mon profil"),
@@ -136,10 +133,7 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "/reset_all",
         "",
         "🚆 Transports :",
-        "/depart <station>",
-        "/changement_1 <station>",
-        "/changement_2 <station>",
-        "/changement_3 <station>",
+        "/changer_mes_stations",
         "",
         "🌤 Météo :",
         "/lieuMeteo <ville> ou <latitude,longitude>",
@@ -778,6 +772,24 @@ async def cmd_changement_3(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await _cmd_changement(update, context, "segment3")
 
 
+def _change_stations_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Modifier depart", callback_data="chst:segment0")],
+            [InlineKeyboardButton("Modifier changement 1", callback_data="chst:segment1")],
+            [InlineKeyboardButton("Modifier changement 2", callback_data="chst:segment2")],
+            [InlineKeyboardButton("Modifier changement 3", callback_data="chst:segment3")],
+        ]
+    )
+
+
+async def cmd_changer_mes_stations(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Quelle station veux-tu modifier ?",
+        reply_markup=_change_stations_keyboard(),
+    )
+
+
 def _parse_latlon(s: str) -> tuple[float, float] | None:
     s = s.strip()
     if "," not in s:
@@ -864,6 +876,18 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if _ud_get(context=context, db=db, chat_id=chat_id, key="heure_notif_flow") in ("await_input", "await_confirm"):
         await _handle_heure_notif_standalone_text(update, context, text=text)
+        return
+
+    pending_seg = _ud_get(context=context, db=db, chat_id=chat_id, key="await_station_change_seg")
+    if isinstance(pending_seg, str) and pending_seg in {"segment0", "segment1", "segment2", "segment3"}:
+        _ud_pop(context=context, db=db, chat_id=chat_id, key="await_station_change_seg", default=None)
+        await _start_segment_flow_from_text(
+            update=update,
+            context=context,
+            seg_key=pending_seg,
+            arg=text,
+            is_depart=(pending_seg == "segment0"),
+        )
         return
 
     if await _handle_segment_destination_query(update, context):
@@ -1403,6 +1427,20 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             _ud_pop(context=context, db=db, chat_id=chat_id, key="modes_draft", default=None)
             await q.message.reply_text("Choisis tes modes de transport :", reply_markup=_modes_keyboard(_modes_from_user(user)))
             return
+
+    if data.startswith("chst:"):
+        parts = data.split(":", 1)
+        if len(parts) != 2:
+            return
+        seg_key = parts[1].strip()
+        if seg_key not in {"segment0", "segment1", "segment2", "segment3"}:
+            return
+        _ud_set(context=context, db=db, chat_id=chat_id, key="await_station_change_seg", value=seg_key)
+        label = "départ" if seg_key == "segment0" else seg_key.replace("segment", "changement ")
+        await q.edit_message_text(
+            f"OK. Envoie maintenant la nouvelle station pour {label}."
+        )
+        return
 
     if data.startswith("seg:"):
         # seg:<segmentKey>:station|line|direction:<id>
@@ -2379,6 +2417,7 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 def _register_command_and_message_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("setup", cmd_setup))
+    app.add_handler(CommandHandler("changer_mes_stations", cmd_changer_mes_stations))
     app.add_handler(CommandHandler("depart", cmd_depart))
     app.add_handler(CommandHandler("changement_1", cmd_changement_1))
     app.add_handler(CommandHandler("changement_2", cmd_changement_2))
