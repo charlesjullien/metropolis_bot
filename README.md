@@ -6,7 +6,7 @@ Bot Telegram qui :
 - permet à chaque utilisateur de configurer :
   - `/depart <station>` : station de départ (texte libre, ex: `Bastille`)
   - `/direction <destination>` : direction (texte libre, ex: `La Défense`)
-  - `/lieuMeteo <ville|lat,lon>` : lieu météo (ex: `Paris` ou `48.8566,2.3522`)
+  - `/lieumeteo <ville|lat,lon>` : lieu météo (ex: `Paris` ou `48.8566,2.3522`)
 
 ## Prérequis
 
@@ -50,7 +50,7 @@ python run.py
 - `/start` : aide
 - `/depart <station>`
 - `/direction <destination>`
-- `/lieuMeteo <ville|lat,lon>`
+- `/lieumeteo <ville|lat,lon>`
 - `/meteo` : météo du jour (manuel)
 - `/perturbations` : perturbations (manuel)
 - `/jours_notifs` : choisir les jours de notification (lun-dim)

@@ -35,10 +35,12 @@ from tgworkbot.weather import format_rain_summary, geocode_first, get_rain_summa
 
 LOG: Final = logging.getLogger("tgworkbot")
 def _telegram_menu_commands() -> list[BotCommand]:
+    # Noms en minuscules uniquement (a-z, 0-9, _) — sinon setMyCommands renvoie BOT_COMMAND_INVALID
+    # et le menu Telegram ne se met pas à jour (l’ancienne liste reste affichée).
     return [
         BotCommand("setup", "Configurer tout le bot"),
         BotCommand("changer_mes_stations", "Modifier depart/changements"),
-        BotCommand("lieuMeteo", "Definir le lieu meteo"),
+        BotCommand("lieumeteo", "Definir le lieu meteo"),
         BotCommand("evenement_historique", "Activer/desactiver l'evenement historique"),
         BotCommand("cours_finance", "Choisir les cours/indices"),
         BotCommand("citation_inspirante", "Activer/desactiver la citation du jour"),
@@ -138,7 +140,7 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "/changer_mes_stations",
         "",
         "🌤 Météo :",
-        "/lieuMeteo <ville> ou <latitude,longitude>",
+        "/lieumeteo <ville> ou <latitude,longitude>",
         "",
         "📜 Histoire :",
         "/evenement_historique",
@@ -534,7 +536,7 @@ async def _setup_after_segment_completed(
     if seg_key == "segment3":
         _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_meteo")
         await message.reply_text(
-            "Lieu météo (équivalent /lieuMeteo) : envoie une ville ou lat,lon.",
+            "Lieu météo (équivalent /lieumeteo) : envoie une ville ou lat,lon.",
             reply_markup=ForceReply(selective=True, input_field_placeholder="Paris ou 48.8566,2.3522"),
         )
 
@@ -840,7 +842,7 @@ def _is_in_ile_de_france(lat: float, lon: float) -> bool:
 async def cmd_lieu_meteo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     arg = _arg_text(update)
     if not arg:
-        await update.message.reply_text("Usage: /lieuMeteo <ville|lat,lon> (ex: /lieuMeteo Paris)")
+        await update.message.reply_text("Usage: /lieumeteo <ville|lat,lon> (ex: /lieumeteo Paris)")
         return
     await _set_meteo_from_arg(update=update, context=context, arg=arg)
 
@@ -2489,7 +2491,7 @@ def _register_command_and_message_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("citation_inspirante", cmd_citation_inspirante))
     app.add_handler(CommandHandler("cours_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("recevoir_news_finance", cmd_cours_finance))
-    app.add_handler(CommandHandler("lieuMeteo", cmd_lieu_meteo))
+    app.add_handler(CommandHandler(["lieumeteo", "lieu_meteo", "lieuMeteo"], cmd_lieu_meteo))
     app.add_handler(CommandHandler("perturbations", cmd_perturbations))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("stations", cmd_stations))
