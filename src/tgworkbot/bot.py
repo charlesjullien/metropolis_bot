@@ -422,8 +422,8 @@ def _notif_time_validation_error(hh: int, mm: int) -> str | None:
     """None si valide, sinon message d'erreur court pour l'utilisateur."""
     if not (0 <= hh <= 23):
         return "L'heure doit être entre 00 et 23 (horloge 24 h)."
-    if mm not in (0, 15, 30, 45):
-        return "Les minutes doivent être 00, 15, 30 ou 45."
+    if mm % 5 != 0:
+        return "Les minutes doivent être un multiple de 5 (00, 05, 10, ..., 55)."
     return None
 
 
@@ -943,7 +943,7 @@ async def on_setup_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         parts = _parse_notif_time_parts(text)
         if parts is None:
             await update.message.reply_text(
-                "Format non reconnu. Exemples : 07:30, 22h45, 0900 (minutes 00, 15, 30 ou 45)."
+                "Format non reconnu. Exemples : 07:30, 22h35, 0900 (minutes par pas de 5)."
             )
             return
         hh, mm = parts
@@ -1895,7 +1895,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if in_setup_days and q.message:
                 _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
                 await q.message.reply_text(
-                    "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
+                    "Heure de notification : envoie <b>HH:MM</b> (minutes par pas de 5), ex. 07:30 ou 22:35.",
                     parse_mode=ParseMode.HTML,
                     reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
                 )
@@ -1907,7 +1907,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if in_setup_days and q.message:
             _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
             await q.message.reply_text(
-                "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
+                "Heure de notification : envoie <b>HH:MM</b> (minutes par pas de 5), ex. 07:30 ou 22:35.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
             )
@@ -2040,7 +2040,7 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         value = _parse_notif_time_input(arg)
         if value is None:
             await update.message.reply_text(
-                "Format invalide. Utilise <b>/heure_notif HH:MM</b> (minutes 00, 15, 30 ou 45). "
+                "Format invalide. Utilise <b>/heure_notif HH:MM</b> (minutes par pas de 5). "
                 "Ex: <code>/heure_notif 07:30</code>.",
                 parse_mode=ParseMode.HTML,
             )
@@ -2066,8 +2066,8 @@ async def cmd_heure_notif(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(
         "À quelle heure veux-tu recevoir la notification chaque jour ?\n\n"
         "Réponds avec l'heure en <b>HH:MM</b> (24 h). Les minutes doivent être "
-        "<b>00</b>, <b>15</b>, <b>30</b> ou <b>45</b>.\n"
-        "Exemples : <code>07:00</code>, <code>12:30</code>, <code>22:45</code> — toute heure de la journée.",
+        "un <b>multiple de 5</b>.\n"
+        "Exemples : <code>07:00</code>, <code>12:35</code>, <code>22:55</code> — toute heure de la journée.",
         parse_mode=ParseMode.HTML,
         reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
     )
@@ -2287,7 +2287,7 @@ async def _daily_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     tz = ZoneInfo(cfg.bot_timezone)
     dt = datetime.now(tz)
-    if dt.minute % 15 != 0:
+    if dt.minute % 5 != 0:
         return
     target_time = f"{dt.hour:02d}:{dt.minute:02d}"
     await send_daily_notifications(app, target_time=target_time)
@@ -2296,8 +2296,8 @@ async def _daily_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _notif_scheduler_loop(app: Application) -> None:
     """
     Fallback quand JobQueue n'est pas disponible:
-    envoie les notifications toutes les 15 minutes,
-    selon `user.notif_time` (HH:MM, minute multiple de 15).
+    envoie les notifications toutes les 5 minutes,
+    selon `user.notif_time` (HH:MM, minute multiple de 5).
     """
     cfg = app.bot_data["cfg"]
     tz = ZoneInfo(cfg.bot_timezone)
@@ -2305,7 +2305,7 @@ async def _notif_scheduler_loop(app: Application) -> None:
 
     while True:
         now = datetime.now(tz)
-        if now.minute % 15 == 0:
+        if now.minute % 5 == 0:
             target_time = f"{now.hour:02d}:{now.minute:02d}"
             key = f"{now.date().isoformat()} {target_time}"
             if last_key != key:
@@ -2376,7 +2376,7 @@ def register_notification_jobs(app: Application) -> None:
     if app.job_queue is not None:
         app.job_queue.run_repeating(_daily_job, interval=60, first=0, name="daily")
         LOG.info(
-            "Bot started. Notification scheduler (%s): each user is notified when wall time matches their DB notif_time (quarter hours).",
+            "Bot started. Notification scheduler (%s): each user is notified when wall time matches their DB notif_time (5-minute resolution).",
             cfg.bot_timezone,
         )
     else:

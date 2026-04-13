@@ -25,8 +25,9 @@ from tgworkbot.weather import format_rain_summary, geocode_first, get_rain_summa
 LOG = logging.getLogger("tgworkbot.api")
 
 # Fenêtre après l'heure programmée : si le cron externe arrive en retard (scrap / file d'attente),
-# on envoie encore jusqu'à N minutes après (ex. notif 17:15, appel HTTP à 17:16 ou 17:17).
-NOTIF_SLACK_AFTER_MINUTES = 2
+# on envoie encore jusqu'à N minutes après (ex. notif 17:10, appel HTTP à 17:13).
+# Avec un cron toutes les 5 minutes, 4 minutes évite les trous tout en restant strict.
+NOTIF_SLACK_AFTER_MINUTES = 4
 _NOTIF_DAY_KEYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 _WEEKDAY_KEY_BY_INDEX = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
