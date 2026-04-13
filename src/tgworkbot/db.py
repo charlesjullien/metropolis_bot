@@ -42,6 +42,8 @@ class UserPrefs:
     news_category: str | None
     # Comma-separated finance keys: sp500,cac40,btc,gold
     finance_selection: str | None
+    # Comma-separated notification weekdays: mon,tue,wed,thu,fri,sat,sun
+    notif_days: str | None
 
 
 class Db:
@@ -76,6 +78,7 @@ class Db:
                     recevoir_evenement_historique INTEGER,
                     news_category TEXT,
                     finance_selection TEXT,
+                    notif_days TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
@@ -111,6 +114,7 @@ class Db:
             add_col("last_notif_sent_key", "last_notif_sent_key TEXT")
             add_col("news_category", "news_category TEXT")
             add_col("finance_selection", "finance_selection TEXT")
+            add_col("notif_days", "notif_days TEXT")
             # Persisted per-user ephemeral state (for webhook stateless mode).
             add_col("user_data_json", "user_data_json TEXT")
 
@@ -259,6 +263,7 @@ class Db:
             recevoir_evenement_historique=_row_bool_evenement_historique(row),
             news_category=row["news_category"] if "news_category" in row.keys() else None,
             finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
+            notif_days=row["notif_days"] if "notif_days" in row.keys() else None,
         )
 
     # Webhook stateless helpers: persist ephemeral per-user state (like context.user_data).
@@ -312,6 +317,7 @@ class Db:
                 recevoir_evenement_historique=_row_bool_evenement_historique(row),
                 news_category=row["news_category"] if "news_category" in row.keys() else None,
                 finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
+                notif_days=row["notif_days"] if "notif_days" in row.keys() else None,
             )
 
     # High-level helpers for new features
@@ -379,8 +385,8 @@ class Db:
                     arrivee_sa_id, arrivee_sa_label, allowed_modes,
                     meteo_label, meteo_lat, meteo_lon, segments_json,
                     notif_time, last_notif_sent_key, recevoir_evenement_historique,
-                    news_category, finance_selection
-                ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL)
+                    news_category, finance_selection, notif_days
+                ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL)
                 ON CONFLICT(chat_id) DO UPDATE SET
                     depart=NULL,
                     direction=NULL,
@@ -398,6 +404,7 @@ class Db:
                     recevoir_evenement_historique=0,
                     news_category=NULL,
                     finance_selection=NULL,
+                    notif_days=NULL,
                     updated_at=datetime('now')
                 """.strip(),
                 (chat_id,),
@@ -425,6 +432,18 @@ class Db:
                     updated_at=datetime('now')
                 """.strip(),
                 (chat_id, 1 if enabled else 0),
+            )
+
+    def set_notif_days(self, chat_id: int, notif_days: str | None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO users(chat_id, notif_days) VALUES (?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    notif_days=excluded.notif_days,
+                    updated_at=datetime('now')
+                """.strip(),
+                (chat_id, notif_days),
             )
 
     def get_history_day_cache_ready(self, *, day: str) -> tuple[str | None, str | None] | None:

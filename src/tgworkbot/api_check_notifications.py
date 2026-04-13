@@ -27,10 +27,22 @@ LOG = logging.getLogger("tgworkbot.api")
 # Fenêtre après l'heure programmée : si le cron externe arrive en retard (scrap / file d'attente),
 # on envoie encore jusqu'à N minutes après (ex. notif 17:15, appel HTTP à 17:16 ou 17:17).
 NOTIF_SLACK_AFTER_MINUTES = 2
+_NOTIF_DAY_KEYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+_WEEKDAY_KEY_BY_INDEX = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 def _minutes_since_midnight(hour: int, minute: int) -> int:
     return hour * 60 + minute
+
+
+def _notif_days_from_user(user) -> set[str]:
+    raw_val = getattr(user, "notif_days", None)
+    if raw_val is None:
+        return set(_NOTIF_DAY_KEYS)
+    raw = str(raw_val).strip()
+    if not raw:
+        return set()
+    return {x.strip() for x in raw.split(",") if x.strip() in _NOTIF_DAY_KEYS}
 
 
 def notification_due_now(
@@ -297,6 +309,7 @@ async def check_and_send_notifications(*, cfg) -> dict:
     tz = ZoneInfo(cfg.bot_timezone)
     now = datetime.now(tz)
     wall_hhmm = f"{now.hour:02d}:{now.minute:02d}"
+    today_key = _WEEKDAY_KEY_BY_INDEX[now.weekday()]
     sent_key_date = now.date().isoformat()
 
     sent = 0
@@ -304,6 +317,8 @@ async def check_and_send_notifications(*, cfg) -> dict:
 
     for user in db.iter_users():
         if not user.notif_time:
+            continue
+        if today_key not in _notif_days_from_user(user):
             continue
         if not notification_due_now(now_local=now, notif_time_hhmm=user.notif_time):
             continue

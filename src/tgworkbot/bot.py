@@ -132,6 +132,9 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "⏰ Définir l'heure de réception de notification :",
         "/heure_notif",
         "",
+        "📅 Choisir les jours de notification :",
+        "/jours_notifs",
+        "",
         "🔔 Recevoir toute la notif :",
         "/simul_notif",
         "",
@@ -161,6 +164,17 @@ FINANCE_OPTIONS = [
     ("gold", "Kg Or"),
 ]
 _FINANCE_KEY_SET = {k for k, _ in FINANCE_OPTIONS}
+NOTIF_DAY_OPTIONS = [
+    ("mon", "Lundi"),
+    ("tue", "Mardi"),
+    ("wed", "Mercredi"),
+    ("thu", "Jeudi"),
+    ("fri", "Vendredi"),
+    ("sat", "Samedi"),
+    ("sun", "Dimanche"),
+]
+_NOTIF_DAY_KEY_SET = {k for k, _ in NOTIF_DAY_OPTIONS}
+_WEEKDAY_KEY_BY_INDEX = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 def _arg_text(update: Update) -> str:
@@ -519,7 +533,7 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_depart")
     await update.message.reply_text(
         "Setup guidé démarré.\n"
-        "Étape 1/6: envoie ta station de départ (je lance l'équivalent de /depart automatiquement).",
+        "Étape 1/7: envoie ta station de départ (je lance l'équivalent de /depart automatiquement).",
         reply_markup=ForceReply(selective=True, input_field_placeholder="/depart Bastille"),
     )
 
@@ -617,6 +631,58 @@ def _finance_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
     )
     rows.append([InlineKeyboardButton("Valider", callback_data="fin:save")])
     return InlineKeyboardMarkup(rows)
+
+
+def _notif_days_from_user(user) -> set[str]:
+    raw_val = getattr(user, "notif_days", None)
+    if raw_val is None:
+        # Default behavior for existing/new users: enabled every day.
+        return set(_NOTIF_DAY_KEY_SET)
+    raw = str(raw_val).strip()
+    if not raw:
+        # Explicitly saved as empty => no notification day selected.
+        return set()
+    return {x.strip() for x in raw.split(",") if x.strip() in _NOTIF_DAY_KEY_SET}
+
+
+def _notif_days_from_context(context: ContextTypes.DEFAULT_TYPE, user) -> set[str]:
+    if _is_webhook_stateless(context):
+        return _notif_days_from_user(user)
+    draft = context.user_data.get("notif_days_draft")
+    if isinstance(draft, list):
+        return {str(x) for x in draft if str(x) in _NOTIF_DAY_KEY_SET}
+    return _notif_days_from_user(user)
+
+
+def _notif_days_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, label in NOTIF_DAY_OPTIONS:
+        mark = "✅" if key in selected else "⬜"
+        rows.append([InlineKeyboardButton(f"{mark} {label}", callback_data=f"nd:toggle:{key}")])
+    rows.append(
+        [
+            InlineKeyboardButton("Tout", callback_data="nd:all"),
+            InlineKeyboardButton("Rien", callback_data="nd:none"),
+        ]
+    )
+    rows.append([InlineKeyboardButton("Valider", callback_data="nd:save")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def cmd_jours_notifs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    user = db.get_user(chat_id)
+    if not user:
+        await update.message.reply_text("Faites /start d'abord.")
+        return
+    selected = _notif_days_from_context(context, user)
+    if not _is_webhook_stateless(context):
+        _ud_set(context=context, db=db, chat_id=chat_id, key="notif_days_draft", value=sorted(selected))
+    await update.message.reply_text(
+        "Choisis les jours où tu veux recevoir la notification :",
+        reply_markup=_notif_days_keyboard(selected),
+    )
 
 
 async def cmd_cours_finance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1067,6 +1133,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     modes = user.allowed_modes or "tous"
     meteo = user.meteo_label or "—"
     notif_time = user.notif_time or "—"
+    day_labels = dict(NOTIF_DAY_OPTIONS)
+    notif_days = _notif_days_from_user(user)
+    notif_days_txt = ", ".join(day_labels[k] for k, _ in NOTIF_DAY_OPTIONS if k in notif_days) if notif_days else "Aucun"
     histo_pref = "Oui (événement historique)" if user.recevoir_evenement_historique else "Non"
     labels = dict(FINANCE_OPTIONS)
     fs = _finance_from_user(user)
@@ -1093,6 +1162,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"- Lieu météo: {meteo}\n"
         f"- Segments:\n{seg_block}\n"
         f"- Heure notif: {notif_time}\n"
+        f"- Jours notif: {notif_days_txt}\n"
         f"- Événement historique: {histo_pref}\n"
         f"- Cours / indices: {finance_pref}"
     )
@@ -1653,11 +1723,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await q.edit_message_text(f"Événement historique : option {label}.")
         flow = _setup_flow(context=context, db=db, chat_id=chat_id)
         if flow and str(flow.get("step") or "") == "await_evenement_historique_click" and q.message:
-            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_days_click")
             await q.message.reply_text(
-                "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
+                "Choisis les jours où tu veux recevoir la notification :",
+                reply_markup=_notif_days_keyboard(_notif_days_from_user(user)),
             )
         return
 
@@ -1755,6 +1824,92 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "Veux-tu un <b>événement historique</b> dans la notification ?",
                 parse_mode=ParseMode.HTML,
                 reply_markup=_evenement_historique_keyboard(enabled=bool(user.recevoir_evenement_historique)),
+            )
+        return
+
+    if data.startswith("nd:toggle:"):
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            return
+        key = parts[2]
+        if key not in _NOTIF_DAY_KEY_SET:
+            return
+        selected = _notif_days_from_context(context, user)
+        if key in selected:
+            selected.remove(key)
+        else:
+            selected.add(key)
+        if _is_webhook_stateless(context):
+            raw = ",".join(sorted(selected)) if selected else ""
+            db.set_notif_days(chat_id, raw)
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="notif_days_draft", value=sorted(selected))
+        try:
+            await q.edit_message_reply_markup(reply_markup=_notif_days_keyboard(selected))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    if data == "nd:all":
+        selected = set(_NOTIF_DAY_KEY_SET)
+        if _is_webhook_stateless(context):
+            db.set_notif_days(chat_id, ",".join(sorted(selected)))
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="notif_days_draft", value=sorted(selected))
+        try:
+            await q.edit_message_reply_markup(reply_markup=_notif_days_keyboard(selected))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    if data == "nd:none":
+        selected: set[str] = set()
+        if _is_webhook_stateless(context):
+            db.set_notif_days(chat_id, "")
+            user = db.get_user(chat_id) or user
+        else:
+            _ud_set(context=context, db=db, chat_id=chat_id, key="notif_days_draft", value=[])
+        try:
+            await q.edit_message_reply_markup(reply_markup=_notif_days_keyboard(selected))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    if data == "nd:save":
+        selected = _notif_days_from_context(context, user)
+        raw = ",".join(sorted(selected)) if selected else ""
+        db.set_notif_days(chat_id, raw)
+        flow = _setup_flow(context=context, db=db, chat_id=chat_id)
+        in_setup_days = bool(flow and str(flow.get("step") or "") == "await_notif_days_click")
+        if not _is_webhook_stateless(context):
+            _ud_pop(context=context, db=db, chat_id=chat_id, key="notif_days_draft", default=None)
+        if not selected:
+            await q.edit_message_text(
+                "Aucun jour sélectionné : aucune notification automatique ne sera envoyée."
+            )
+            if in_setup_days and q.message:
+                _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
+                await q.message.reply_text(
+                    "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
+                )
+            return
+        labels = dict(NOTIF_DAY_OPTIONS)
+        await q.edit_message_text(
+            "Jours enregistrés : " + ", ".join(labels[k] for k, _ in NOTIF_DAY_OPTIONS if k in selected)
+        )
+        if in_setup_days and q.message:
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_time")
+            await q.message.reply_text(
+                "Heure de notification : envoie <b>HH:MM</b> (minutes 00, 15, 30 ou 45), ex. 07:30 ou 22:45.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=ForceReply(selective=True, input_field_placeholder="17:30"),
             )
         return
 
@@ -2093,13 +2248,17 @@ async def send_daily_notifications(app: Application, *, target_time: str) -> Non
     db: Db = app.bot_data["db"]
     provider = app.bot_data["transit_provider"]
 
-    notif_key_date = datetime.now(ZoneInfo(cfg.bot_timezone)).date().isoformat()
+    now_local = datetime.now(ZoneInfo(cfg.bot_timezone))
+    notif_key_date = now_local.date().isoformat()
+    today_key = _WEEKDAY_KEY_BY_INDEX[now_local.weekday()]
     # sent_key used to avoid duplicates within the same minute.
     sent_key = f"{notif_key_date} {target_time}"
 
     for user in db.iter_users():
         # Ne notifier que les utilisateurs ayant choisi cette heure
         if not user.notif_time or user.notif_time != target_time:
+            continue
+        if today_key not in _notif_days_from_user(user):
             continue
         if user.last_notif_sent_key == sent_key:
             continue
@@ -2192,6 +2351,7 @@ def _register_command_and_message_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("infos", cmd_infos_transports))
     app.add_handler(CommandHandler("simul_notif", cmd_simul_notif))
     app.add_handler(CommandHandler("heure_notif", cmd_heure_notif))
+    app.add_handler(CommandHandler("jours_notifs", cmd_jours_notifs))
     app.add_handler(CommandHandler("purge_db", cmd_purge_db))
     app.add_handler(CommandHandler("reset_all", cmd_reset_all))
     app.add_handler(CommandHandler("evenement_historique", cmd_evenement_historique))

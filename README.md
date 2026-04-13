@@ -2,7 +2,7 @@
 
 Bot Telegram qui :
 
-- envoie **chaque jour à l’heure choisie** (setup ou `/heure_notif`, minutes 00/15/30/45) une notification avec **la météo du jour** (pluie : plages horaires + pluviométrie) et **les perturbations transports** (zone/ligne),
+- envoie une notification à **l’heure choisie** (setup ou `/heure_notif`, minutes 00/15/30/45), uniquement sur les **jours sélectionnés** via `/jours_notifs`, avec **la météo du jour** (pluie : plages horaires + pluviométrie) et **les perturbations transports** (zone/ligne),
 - permet à chaque utilisateur de configurer :
   - `/depart <station>` : station de départ (texte libre, ex: `Bastille`)
   - `/direction <destination>` : direction (texte libre, ex: `La Défense`)
@@ -53,5 +53,6 @@ python run.py
 - `/lieuMeteo <ville|lat,lon>`
 - `/meteo` : météo du jour (manuel)
 - `/perturbations` : perturbations (manuel)
+- `/jours_notifs` : choisir les jours de notification (lun-dim)
 - `/status` : affiche la config enregistrée
 
