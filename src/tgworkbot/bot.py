@@ -38,21 +38,20 @@ def _telegram_menu_commands() -> list[BotCommand]:
     # Noms en minuscules uniquement (a-z, 0-9, _) — sinon setMyCommands renvoie BOT_COMMAND_INVALID
     # et le menu Telegram ne se met pas à jour (l’ancienne liste reste affichée).
     return [
+        BotCommand("simul_notif", "Recevoir la notification complète"),
         BotCommand("setup", "Configurer tout le bot"),
-        BotCommand("changer_mes_stations", "Modifier depart/changements"),
-        BotCommand("lieumeteo", "Definir le lieu meteo"),
-        BotCommand("evenement_historique", "Activer/desactiver l'evenement historique"),
-        BotCommand("cours_finance", "Choisir les cours/indices"),
-        BotCommand("citation_inspirante", "Activer/desactiver la citation du jour"),
+        BotCommand("start", "Afficher le menu d'aide"),
         BotCommand("status", "Voir ma configuration"),
-        BotCommand("simul_notif", "Tester la notification complète"),
         BotCommand("heure_notif", "Définir l'heure de notification"),
         BotCommand("jours_notifs", "Choisir les jours de notification"),
-        BotCommand("modes", "Choisir les modes de transport"),
+        BotCommand("changer_mes_stations", "Modifier depart/changements"),
         BotCommand("infos_transports", "Voir les infos transport"),
         BotCommand("perturbations", "Voir les perturbations"),
+        BotCommand("cours_finance", "Choisir les cours/indices"),
+        BotCommand("citation_inspirante", "Activer/desactiver la citation du jour"),
+        BotCommand("evenement_historique", "Activer/desactiver l'evenement historique"),
+        BotCommand("lieumeteo", "Definir le lieu meteo"),
         BotCommand("reset_all", "Réinitialiser mon profil"),
-        BotCommand("start", "Afficher le menu d'aide"),
     ]
 
 
