@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
-from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonCommands, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
@@ -33,6 +33,27 @@ from tgworkbot.weather import format_rain_summary, geocode_first, get_rain_summa
 
 
 LOG: Final = logging.getLogger("tgworkbot")
+def _telegram_menu_commands() -> list[BotCommand]:
+    return [
+        BotCommand("setup", "Configurer tout le bot"),
+        BotCommand("status", "Voir ma configuration"),
+        BotCommand("simul_notif", "Tester la notification complète"),
+        BotCommand("heure_notif", "Définir l'heure de notification"),
+        BotCommand("jours_notifs", "Choisir les jours de notification"),
+        BotCommand("depart", "Définir la station de départ"),
+        BotCommand("changement_1", "Définir changement 1"),
+        BotCommand("changement_2", "Définir changement 2"),
+        BotCommand("changement_3", "Définir changement 3"),
+        BotCommand("modes", "Choisir les modes de transport"),
+        BotCommand("lieuMeteo", "Définir le lieu météo"),
+        BotCommand("cours_finance", "Choisir les cours/indices"),
+        BotCommand("evenement_historique", "Activer/désactiver l'événement historique"),
+        BotCommand("infos_transports", "Voir les infos transport"),
+        BotCommand("perturbations", "Voir les perturbations"),
+        BotCommand("reset_all", "Réinitialiser mon profil"),
+        BotCommand("start", "Afficher le menu d'aide"),
+    ]
+
 
 
 def _is_webhook_stateless(context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -2317,6 +2338,14 @@ async def _notif_scheduler_loop(app: Application) -> None:
 
 
 async def _post_init(app: Application) -> None:
+    # Configure Telegram command menu (icone à gauche du champ de saisie).
+    # This enables clickable commands without requiring users to type /start first.
+    try:
+        await app.bot.set_my_commands(_telegram_menu_commands())
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception:
+        LOG.exception("unable to configure Telegram command menu")
+
     if app.bot_data.get("webhook_only"):
         return
     # If JobQueue isn't installed/configured, rely on an internal asyncio loop.
