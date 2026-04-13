@@ -1,0 +1,1462 @@
+[
+  {
+    "text": "Le seul véritable voyage, ce ne serait pas d'aller vers de nouveaux paysages, mais d'avoir d'autres yeux.",
+    "author": "Marcel Proust"
+  },
+  {
+    "text": "On ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "La vie est une aventure audacieuse ou elle n'est rien.",
+    "author": "Helen Keller"
+  },
+  {
+    "text": "Soyez le changement que vous voulez voir dans le monde.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "L'imagination est plus importante que le savoir.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Il n'y a qu'un bonheur dans la vie, c'est d'aimer et d'être aimé.",
+    "author": "George Sand"
+  },
+  {
+    "text": "Le courage n'est pas l'absence de peur, mais la capacité de la vaincre.",
+    "author": "Nelson Mandela"
+  },
+  {
+    "text": "La simplicité est la sophistication suprême.",
+    "author": "Léonard de Vinci"
+  },
+  {
+    "text": "Agis comme s'il était impossible d'échouer.",
+    "author": "Winston Churchill"
+  },
+  {
+    "text": "La connaissance parle, mais la sagesse écoute.",
+    "author": "Jimi Hendrix"
+  },
+  {
+    "text": "Rien ne sert de courir, il faut partir à point.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Tout comprendre, c'est tout pardonner.",
+    "author": "Madame de Staël"
+  },
+  {
+    "text": "La liberté commence là où l'ignorance finit.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "Je pense, donc je suis.",
+    "author": "René Descartes"
+  },
+  {
+    "text": "L'homme est un roseau pensant.",
+    "author": "Blaise Pascal"
+  },
+  {
+    "text": "Le bonheur est parfois caché dans l'inconnu.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "Vis comme si tu devais mourir demain. Apprends comme si tu devais vivre toujours.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "La musique est la langue des émotions.",
+    "author": "Emmanuel Kant"
+  },
+  {
+    "text": "Le temps que tu perds à avoir de la peine est du temps perdu.",
+    "author": "Marie Curie"
+  },
+  {
+    "text": "La science n'a pas de patrie, parce que le savoir est le patrimoine de l'humanité.",
+    "author": "Louis Pasteur"
+  },
+  {
+    "text": "Le sort en est jeté.",
+    "author": "Jules César"
+  },
+  {
+    "text": "Je viens, je vois, je vaincs.",
+    "author": "Jules César"
+  },
+  {
+    "text": "L'éducation est l'arme la plus puissante pour changer le monde.",
+    "author": "Nelson Mandela"
+  },
+  {
+    "text": "La beauté est dans les yeux de celui qui regarde.",
+    "author": "Oscar Wilde"
+  },
+  {
+    "text": "Nous sommes ce que nous faisons répétitivement. L'excellence n'est donc pas un acte mais une habitude.",
+    "author": "Aristote"
+  },
+  {
+    "text": "Connais-toi toi-même.",
+    "author": "Socrate"
+  },
+  {
+    "text": "Je sais que je ne sais rien.",
+    "author": "Socrate"
+  },
+  {
+    "text": "La nature nous a donné une langue et deux oreilles pour entendre deux fois plus qu'on ne parle.",
+    "author": "Épictète"
+  },
+  {
+    "text": "Le bonheur dépend plus de la disposition intérieure que des événements extérieurs.",
+    "author": "George Washington"
+  },
+  {
+    "text": "La persévérance est la mère du succès.",
+    "author": "Benjamin Franklin"
+  },
+  {
+    "text": "Un voyage de mille lieues commence toujours par un premier pas.",
+    "author": "Lao-Tseu"
+  },
+  {
+    "text": "Sois le changement.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "La folie, c'est de faire toujours la même chose et d'attendre un résultat différent.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La logique vous mènera d'un point A à un point B. L'imagination vous mènera partout.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Il n'y a pas de vent favorable pour celui qui ne sait où il va.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "La vie, c'est ce qui vous arrive pendant que vous faites d'autres projets.",
+    "author": "John Lennon"
+  },
+  {
+    "text": "Le succès n'est pas final, l'échec n'est pas fatal : c'est le courage de continuer qui compte.",
+    "author": "Winston Churchill"
+  },
+  {
+    "text": "La meilleure façon de prédire l'avenir, c'est de le créer.",
+    "author": "Peter Drucker"
+  },
+  {
+    "text": "Ne juge pas chaque jour à la récolte que tu fais mais aux graines que tu plantes.",
+    "author": "Robert Louis Stevenson"
+  },
+  {
+    "text": "La patience est amère, mais son fruit est doux.",
+    "author": "Jean-Jacques Rousseau"
+  },
+  {
+    "text": "Tout obstacle renforce la détermination.",
+    "author": "Léonard de Vinci"
+  },
+  {
+    "text": "Le génie, c'est un pour cent d'inspiration et quatre-vingt-dix-neuf pour cent de transpiration.",
+    "author": "Thomas Edison"
+  },
+  {
+    "text": "La vérité est plus étrange que la fiction.",
+    "author": "Mark Twain"
+  },
+  {
+    "text": "Il vaut mieux allumer une seule bougie que de maudire l'obscurité.",
+    "author": "Confucius"
+  },
+  {
+    "text": "Choisissez un travail que vous aimez et vous n'aurez jamais à travailler un seul jour.",
+    "author": "Confucius"
+  },
+  {
+    "text": "La mort n'est rien, mais vivre vaincu et sans gloire, c'est mourir tous les jours.",
+    "author": "Napoléon Bonaparte"
+  },
+  {
+    "text": "L'avenir appartient à ceux qui se lèvent tôt.",
+    "author": "Benjamin Franklin"
+  },
+  {
+    "text": "La peur mène à la colère, la colère mène à la haine, la haine mène à la souffrance.",
+    "author": "George Lucas"
+  },
+  {
+    "text": "Plus haut on vole, plus on voit loin.",
+    "author": "Léonard de Vinci"
+  },
+  {
+    "text": "La musique exprime ce qui ne peut pas être dit.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "Rien au monde n'est aussi puissant qu'une idée dont l'heure est venue.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "L'avenir dépend de ce que nous faisons dans le présent.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "La douleur est temporaire, la fierté est éternelle.",
+    "author": "Lance Armstrong"
+  },
+  {
+    "text": "Le doute est le commencement de la sagesse.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La joie partagée est double joie.",
+    "author": "Proverbe suédois"
+  },
+  {
+    "text": "Le silence est une source de grande force.",
+    "author": "Lao-Tseu"
+  },
+  {
+    "text": "La force ne vient pas des capacités physiques. Elle vient d'une volonté indomptable.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "L'échec est le fondement du succès.",
+    "author": "Lao-Tseu"
+  },
+  {
+    "text": "La vie est faite de petits bonheurs.",
+    "author": "Ray Bradbury"
+  },
+  {
+    "text": "Le bonheur n'est pas quelque chose de prêt à l'emploi. Il vient de vos propres actions.",
+    "author": "Dalaï-Lama"
+  },
+  {
+    "text": "La gentillesse est un langage que les sourds peuvent entendre et les aveugles peuvent voir.",
+    "author": "Mark Twain"
+  },
+  {
+    "text": "L'amour est composé d'une seule âme habitant deux corps.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La raison du plus fort est toujours la meilleure.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Le monde est un livre dont chaque pas nous ouvre une page.",
+    "author": "Alphonse de Lamartine"
+  },
+  {
+    "text": "La jeunesse est le temps d'étudier la sagesse, la vieillesse est le temps de la pratiquer.",
+    "author": "Jean-Jacques Rousseau"
+  },
+  {
+    "text": "Le temps est le plus sage des conseillers.",
+    "author": "Périclès"
+  },
+  {
+    "text": "La vérité est la première victime de la guerre.",
+    "author": "Ésope"
+  },
+  {
+    "text": "L'union fait la force.",
+    "author": "Ésope"
+  },
+  {
+    "text": "Le courage, c'est d'aller d'idée en idée.",
+    "author": "Paul Valéry"
+  },
+  {
+    "text": "La culture, c'est ce qui reste quand on a tout oublié.",
+    "author": "Édouard Herriot"
+  },
+  {
+    "text": "Le talent sans travail ne vaut rien.",
+    "author": "Sophocle"
+  },
+  {
+    "text": "La beauté morale est née du bien.",
+    "author": "Platon"
+  },
+  {
+    "text": "L'homme n'est qu'un roseau, le plus faible de la nature, mais c'est un roseau pensant.",
+    "author": "Blaise Pascal"
+  },
+  {
+    "text": "Le monde est dangereux à vivre, non à cause de ceux qui font le mal, mais à cause de ceux qui regardent.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La paix commence par un sourire.",
+    "author": "Mère Teresa"
+  },
+  {
+    "text": "Le bonheur est un papillon : si on le poursuit, il nous échappe ; si on s'assied tranquillement, il peut se poser sur nous.",
+    "author": "Nathaniel Hawthorne"
+  },
+  {
+    "text": "La volonté trouve toujours un chemin.",
+    "author": "Proverbe tibétain"
+  },
+  {
+    "text": "Le succès, c'est tomber sept fois et se relever huit.",
+    "author": "Proverbe japonais"
+  },
+  {
+    "text": "La sagesse commence dans l'émerveillement.",
+    "author": "Socrate"
+  },
+  {
+    "text": "L'important n'est pas de convaincre, mais d'avoir raison.",
+    "author": "Marie Curie"
+  },
+  {
+    "text": "Le savoir est le seul bien qui s'accroît quand on le partage.",
+    "author": "Proverbe africain"
+  },
+  {
+    "text": "La haine est une affaire trop grave pour la confier à des sous-traitants.",
+    "author": "Jean Rostand"
+  },
+  {
+    "text": "Le rire est le soleil qui chasse l'hiver du visage humain.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "La littérature, c'est l'élégance à l'état pur.",
+    "author": "Marguerite Yourcenar"
+  },
+  {
+    "text": "L'art de vivre, c'est l'art de rencontrer.",
+    "author": "Martin Buber"
+  },
+  {
+    "text": "Le pessimiste voit la difficulté dans chaque opportunité ; l'optimiste voit l'opportunité dans chaque difficulté.",
+    "author": "Winston Churchill"
+  },
+  {
+    "text": "La grandeur d'un métier est peut-être surtout d'unir les hommes.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "Le cœur a ses raisons que la raison ne connaît point.",
+    "author": "Blaise Pascal"
+  },
+  {
+    "text": "La liberté, c'est l'indépendance de la pensée.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "L'esprit grandit avec l'usage qu'on en fait.",
+    "author": "Voltaire"
+  },
+  {
+    "text": "Le doute est le commencement de la foi.",
+    "author": "Paul Tillich"
+  },
+  {
+    "text": "La terre est bleue comme une orange.",
+    "author": "Paul Éluard"
+  },
+  {
+    "text": "Le poète est un menteur qui dit toujours la vérité.",
+    "author": "Jean Cocteau"
+  },
+  {
+    "text": "La poésie, c'est l'émotion mise au carré.",
+    "author": "Paul Valéry"
+  },
+  {
+    "text": "L'œuvre d'art, c'est un coin de la création vu à travers un tempérament.",
+    "author": "Émile Zola"
+  },
+  {
+    "text": "Le style, c'est l'homme même.",
+    "author": "Georges-Louis Leclerc de Buffon"
+  },
+  {
+    "text": "La musique est le refuge des âmes blessées par le bonheur.",
+    "author": "Émile Zola"
+  },
+  {
+    "text": "L'avenir n'appartient qu'aux esprits libres.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Le bonheur est une chose simple et discrète.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "La révolte est le seul concept qui se dresse face à la mort.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "L'hiver est sur mon âme.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "Le printemps est une promesse que l'été tient.",
+    "author": "Hal Borland"
+  },
+  {
+    "text": "La nuit porte conseil.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "L'habit ne fait pas le moine.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Le monde est une scène où chacun joue son rôle.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "La rose n'a d'épines que pour qui veut la cueillir.",
+    "author": "Proverbe arabe"
+  },
+  {
+    "text": "L'eau trouble est un gain pour les pêcheurs.",
+    "author": "Proverbe chinois"
+  },
+  {
+    "text": "Le silence est d'or.",
+    "author": "Thomas Carlyle"
+  },
+  {
+    "text": "La parole est d'argent, le silence est d'or.",
+    "author": "Thomas Carlyle"
+  },
+  {
+    "text": "Il faut cultiver notre jardin.",
+    "author": "Voltaire"
+  },
+  {
+    "text": "Même la nuit la plus sombre finira et le soleil se lèvera.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "On ne naît pas femme, on le devient.",
+    "author": "Simone de Beauvoir"
+  },
+  {
+    "text": "L'existence précède l'essence.",
+    "author": "Jean-Paul Sartre"
+  },
+  {
+    "text": "Dans l'âme de tout homme se cache un tigre.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "Ce qui compte, ce n'est pas le nombre d'heures que vous travaillez, mais l'énergie que vous y mettez.",
+    "author": "André Malraux"
+  },
+  {
+    "text": "Écrire, c'est aussi ne pas parler. C'est se taire.",
+    "author": "Marguerite Duras"
+  },
+  {
+    "text": "Regardez longtemps les chats, les chats regardent longtemps vous.",
+    "author": "Colette"
+  },
+  {
+    "text": "Les beaux livres sont écrits dans une sorte de langue étrangère.",
+    "author": "Marcel Proust"
+  },
+  {
+    "text": "La beauté sera convulsive ou ne sera pas.",
+    "author": "Charles Baudelaire"
+  },
+  {
+    "text": "Je est un autre.",
+    "author": "Arthur Rimbaud"
+  },
+  {
+    "text": "Et l'infini terrible effara ton œil bleu.",
+    "author": "Paul Verlaine"
+  },
+  {
+    "text": "La vérité est en marche et rien ne l'arrêtera.",
+    "author": "Émile Zola"
+  },
+  {
+    "text": "La vie, voyez-vous, ça n'est jamais si bon ni si mauvais qu'on croit.",
+    "author": "Guy de Maupassant"
+  },
+  {
+    "text": "Tous pour un, un pour tous !",
+    "author": "Alexandre Dumas"
+  },
+  {
+    "text": "Crime, comme la vertu, est son propre salaire.",
+    "author": "Jean Racine"
+  },
+  {
+    "text": "À vaincre sans péril, on triomphe sans gloire.",
+    "author": "Pierre Corneille"
+  },
+  {
+    "text": "Les vertus se perdent dans l'intérêt comme les fleuves dans la mer.",
+    "author": "François de La Rochefoucauld"
+  },
+  {
+    "text": "Tout le malheur des hommes vient d'une seule chose, savoir demeurer au repos.",
+    "author": "Blaise Pascal"
+  },
+  {
+    "text": "Divise chaque difficulté en autant de parcelles qu'il est possible et nécessaire de les résoudre.",
+    "author": "René Descartes"
+  },
+  {
+    "text": "Je veux qu'on me voie en ma simple, naturelle et ordinaire façon.",
+    "author": "Michel de Montaigne"
+  },
+  {
+    "text": "On ne se baigne jamais deux fois dans le même fleuve.",
+    "author": "Denis Diderot"
+  },
+  {
+    "text": "L'homme est né libre, et partout il est dans les fers.",
+    "author": "Jean-Jacques Rousseau"
+  },
+  {
+    "text": "La plus grande grâce de la vieillesse, c'est le détachement.",
+    "author": "Madame de Sévigné"
+  },
+  {
+    "text": "La distance n'abolit pas l'amitié.",
+    "author": "Madame du Deffand"
+  },
+  {
+    "text": "L'éducation est la clé de tout.",
+    "author": "Madame de Maintenon"
+  },
+  {
+    "text": "L'État, c'est moi.",
+    "author": "Louis XIV"
+  },
+  {
+    "text": "Impossible n'est pas français.",
+    "author": "Napoléon Bonaparte"
+  },
+  {
+    "text": "La France ne peut être la France sans la grandeur.",
+    "author": "Charles de Gaulle"
+  },
+  {
+    "text": "Ne sous-estimez jamais la capacité des gens à se révolter.",
+    "author": "Simone Veil"
+  },
+  {
+    "text": "Dans la vie, il n'y a rien à craindre, il n'y a qu'à comprendre.",
+    "author": "Marie Curie"
+  },
+  {
+    "text": "Le hasard ne favorise que les esprits préparés.",
+    "author": "Louis Pasteur"
+  },
+  {
+    "text": "La pensée est seule une petite lampe dans une grande nuit.",
+    "author": "Henri Poincaré"
+  },
+  {
+    "text": "Je n'ai aucun talent particulier, je suis seulement passionnément curieuse.",
+    "author": "Marie Skłodowska-Curie"
+  },
+  {
+    "text": "La créativité, c'est l'intelligence qui s'amuse.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Si j'ai vu plus loin, c'est en me tenant sur les épaules des géants.",
+    "author": "Isaac Newton"
+  },
+  {
+    "text": "Et pourtant elle tourne.",
+    "author": "Galilée"
+  },
+  {
+    "text": "Ce n'est pas le plus fort qui survit, mais le plus adaptable.",
+    "author": "Charles Darwin"
+  },
+  {
+    "text": "Rappelez-vous de regarder les étoiles et non vos pieds.",
+    "author": "Stephen Hawking"
+  },
+  {
+    "text": "Nous sommes faits de poussière d'étoiles.",
+    "author": "Carl Sagan"
+  },
+  {
+    "text": "C'est un petit pas pour l'homme, un bond de géant pour l'humanité.",
+    "author": "Neil Armstrong"
+  },
+  {
+    "text": "J'ai un rêve.",
+    "author": "Martin Luther King"
+  },
+  {
+    "text": "Non, je ne me lèverai pas.",
+    "author": "Rosa Parks"
+  },
+  {
+    "text": "Après avoir gravi une grande colline, on découvre qu'il y en a encore d'autres à gravir.",
+    "author": "Nelson Mandela"
+  },
+  {
+    "text": "La force ne vient pas des capacités physiques.",
+    "author": "Mahatma Gandhi"
+  },
+  {
+    "text": "Choisis un travail que tu aimes.",
+    "author": "Confucius"
+  },
+  {
+    "text": "Celui qui sait ne parle pas.",
+    "author": "Lao-Tseu"
+  },
+  {
+    "text": "Chaque matin nous renaissons. Ce que nous faisons aujourd'hui importe le plus.",
+    "author": "Bouddha"
+  },
+  {
+    "text": "Je ne suis ni athénien ni grec, je suis citoyen du monde.",
+    "author": "Socrate"
+  },
+  {
+    "text": "La musique donne une âme à l'univers.",
+    "author": "Platon"
+  },
+  {
+    "text": "La qualité n'est pas un acte, c'est une habitude.",
+    "author": "Aristote"
+  },
+  {
+    "text": "Tu as le pouvoir sur ton esprit, pas sur les événements extérieurs.",
+    "author": "Marc Aurèle"
+  },
+  {
+    "text": "Ce n'est pas parce que les choses sont difficiles que nous n'osons pas.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "Ce n'est pas ce qui t'arrive, c'est comment tu y réponds.",
+    "author": "Épictète"
+  },
+  {
+    "text": "La gloire suit la vertu comme si elle était son ombre.",
+    "author": "Marcus Tullius Cicéron"
+  },
+  {
+    "text": "Il n'y a pas de plus grande gloire que celle que l'on s'est donnée soi-même.",
+    "author": "Homère"
+  },
+  {
+    "text": "Être ou ne pas être, telle est la question.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "L'esprit est son propre lieu.",
+    "author": "John Milton"
+  },
+  {
+    "text": "Il n'y a pas de bonheur comparable à celui d'être aimé de votre entourage.",
+    "author": "Jane Austen"
+  },
+  {
+    "text": "Je préfère la paix à la guerre.",
+    "author": "Charlotte Brontë"
+  },
+  {
+    "text": "L'espoir est la chose aux plumes.",
+    "author": "Emily Dickinson"
+  },
+  {
+    "text": "Garde ton visage toujours vers le soleil.",
+    "author": "Walt Whitman"
+  },
+  {
+    "text": "Vingt ans plus tard, vous serez plus déçu par les choses que vous n'avez pas faites.",
+    "author": "Mark Twain"
+  },
+  {
+    "text": "L'homme peut être détruit mais pas vaincu.",
+    "author": "Ernest Hemingway"
+  },
+  {
+    "text": "Réessaie. Échoue encore. Échoue mieux.",
+    "author": "F. Scott Fitzgerald"
+  },
+  {
+    "text": "Toutes les familles heureuses se ressemblent.",
+    "author": "Leo Tolstoï"
+  },
+  {
+    "text": "La beauté sauvera le monde.",
+    "author": "Fiodor Dostoïevski"
+  },
+  {
+    "text": "La médecine est ma femme légitime, la littérature est ma maîtresse.",
+    "author": "Anton Tchekhov"
+  },
+  {
+    "text": "La vie m'apprend à moins m'attendre des hommes.",
+    "author": "Pouchkine"
+  },
+  {
+    "text": "Tout ce que tu peux faire ou rêver, commence-le.",
+    "author": "Goethe"
+  },
+  {
+    "text": "Contre la médiocrité, même les dieux luttent en vain.",
+    "author": "Schiller"
+  },
+  {
+    "text": "Où ils ont brûlé des livres, ils finiront par brûler des hommes.",
+    "author": "Heinrich Heine"
+  },
+  {
+    "text": "Vis les questions maintenant.",
+    "author": "Rainer Maria Rilke"
+  },
+  {
+    "text": "Un livre doit être la hache qui brise la mer gelée en nous.",
+    "author": "Franz Kafka"
+  },
+  {
+    "text": "Certains chemins ne se voient qu'en les parcourant.",
+    "author": "Hermann Hesse"
+  },
+  {
+    "text": "Un écrivain est quelqu'un pour qui écrire est plus difficile que pour les autres.",
+    "author": "Thomas Mann"
+  },
+  {
+    "text": "La force d'un peuple réside dans la diversité de ses individus.",
+    "author": "Stefan Zweig"
+  },
+  {
+    "text": "Je veux faire avec toi ce que le printemps fait avec les cerisiers.",
+    "author": "Pablo Neruda"
+  },
+  {
+    "text": "Je ne suis pas celui qui écrit, je suis celui qui est écrit.",
+    "author": "Jorge Luis Borges"
+  },
+  {
+    "text": "La vie n'est pas ce qu'on a vécu, mais ce dont on se souvient.",
+    "author": "Gabriel García Márquez"
+  },
+  {
+    "text": "La poésie est le langage par excellence.",
+    "author": "Octavio Paz"
+  },
+  {
+    "text": "La littérature est le feu.",
+    "author": "Mario Vargas Llosa"
+  },
+  {
+    "text": "Écrire, c'est un acte de courage.",
+    "author": "Isabel Allende"
+  },
+  {
+    "text": "Quand tu veux vraiment quelque chose, tout l'univers conspire à t'aider à l'obtenir.",
+    "author": "Coelho Paulo"
+  },
+  {
+    "text": "Tout le monde est un génie.",
+    "author": "Jorge Amado"
+  },
+  {
+    "text": "Je suis comme ça : je vois le fond des choses.",
+    "author": "Clarice Lispector"
+  },
+  {
+    "text": "Le bonheur est comme un papillon.",
+    "author": "Machado de Assis"
+  },
+  {
+    "text": "Ne regarde pas le soleil couchant avec des yeux qui pleurent.",
+    "author": "Rabindranath Tagore"
+  },
+  {
+    "text": "Travaillez avec amour.",
+    "author": "Khalil Gibran"
+  },
+  {
+    "text": "Ce que tu cherches, te cherche aussi.",
+    "author": "Rumi"
+  },
+  {
+    "text": "Je souhaite que tu saches que tu as un cœur.",
+    "author": "Hafiz"
+  },
+  {
+    "text": "Connais ton ennemi et connais-toi toi-même.",
+    "author": "Sun Tzu"
+  },
+  {
+    "text": "Le grand homme est celui qui ne perd pas l'enfant qu'il portait en lui.",
+    "author": "Mencius"
+  },
+  {
+    "text": "L'homme supérieur est modeste dans ses paroles.",
+    "author": "Confucius"
+  },
+  {
+    "text": "Il n'y a qu'une bataille : celle que tu livres contre toi-même.",
+    "author": "Miyamoto Musashi"
+  },
+  {
+    "text": "Je ne crains pas l'homme qui a pratiqué 10 000 coups une fois.",
+    "author": "Bruce Lee"
+  },
+  {
+    "text": "Le plus important, c'est d'essayer.",
+    "author": "Kobe Bryant"
+  },
+  {
+    "text": "J'ai raté plus de 9000 tirs dans ma carrière.",
+    "author": "Michael Jordan"
+  },
+  {
+    "text": "Ne compte pas les jours, fais en sorte que les jours comptent.",
+    "author": "Muhammad Ali"
+  },
+  {
+    "text": "Le succès n'est pas un accident.",
+    "author": "Pelé"
+  },
+  {
+    "text": "Les opportunités viennent à ceux qui se préparent.",
+    "author": "Jesse Owens"
+  },
+  {
+    "text": "Tu dois croire en la victoire pour la gagner.",
+    "author": "Roger Federer"
+  },
+  {
+    "text": "Je n'ai jamais été la meilleure à quoi que ce soit.",
+    "author": "Serena Williams"
+  },
+  {
+    "text": "Je ne suis pas la prochaine personne, je suis la première Simone.",
+    "author": "Simone Biles"
+  },
+  {
+    "text": "Je ne pense pas aux limites.",
+    "author": "Usain Bolt"
+  },
+  {
+    "text": "Aucun être humain n'est limité.",
+    "author": "Eliud Kipchoge"
+  },
+  {
+    "text": "Restez affamés, restez fous.",
+    "author": "Steve Jobs"
+  },
+  {
+    "text": "Le succès est un mauvais professeur.",
+    "author": "Bill Gates"
+  },
+  {
+    "text": "Prenez le temps de vous asseoir et de réfléchir.",
+    "author": "Warren Buffett"
+  },
+  {
+    "text": "Quand quelque chose est assez important, vous le faites même si les chances ne sont pas en votre faveur.",
+    "author": "Elon Musk"
+  },
+  {
+    "text": "Votre marque, c'est ce que les gens disent de vous quand vous n'êtes pas dans la pièce.",
+    "author": "Jeff Bezos"
+  },
+  {
+    "text": "Les opportunités sont comme les bus.",
+    "author": "Richard Branson"
+  },
+  {
+    "text": "Tournez vos blessures en sagesse.",
+    "author": "Oprah Winfrey"
+  },
+  {
+    "text": "Le succès n'est pas à propos de combien d'argent vous faites.",
+    "author": "Michelle Obama"
+  },
+  {
+    "text": "Un enfant, un enseignant, un livre et un stylo peuvent changer le monde.",
+    "author": "Malala Yousafzai"
+  },
+  {
+    "text": "Vous ne pouvez pas avoir demain à moitié prix.",
+    "author": "Angela Merkel"
+  },
+  {
+    "text": "Le courage, c'est de garder la raison.",
+    "author": "François Mitterrand"
+  },
+  {
+    "text": "La politique, c'est d'abord un engagement personnel.",
+    "author": "Simone Veil"
+  },
+  {
+    "text": "Petit pas aujourd'hui, grand chemin demain.",
+    "author": "Proverbe anonyme"
+  },
+  {
+    "text": "La mesure de l'amour, c'est d'aimer sans mesure.",
+    "author": "Saint Augustin"
+  },
+  {
+    "text": "Il n'est pas de vent favorable pour celui qui ne sait où il va.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "Petit à petit, l'oiseau fait son nid.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Qui veut voyager loin ménage sa monture.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Après la pluie, le beau temps.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Mieux vaut tard que jamais.",
+    "author": "Proverbe anglais"
+  },
+  {
+    "text": "À cœur vaillant, rien d'impossible.",
+    "author": "Jacques Cœur"
+  },
+  {
+    "text": "Qui ne tente rien n'a rien.",
+    "author": "François Rabelais"
+  },
+  {
+    "text": "Tout vient à point à qui sait attendre.",
+    "author": "Nicolas Boileau"
+  },
+  {
+    "text": "L'occasion fait le larron.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Tel père, tel fils.",
+    "author": "Proverbe latin"
+  },
+  {
+    "text": "Qui seme le vent récolte la tempête.",
+    "author": "Osée"
+  },
+  {
+    "text": "Charité bien ordonnée commence par soi-même.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Il faut manger pour vivre, et non pas vivre pour manger.",
+    "author": "Socrate"
+  },
+  {
+    "text": "La fortune sourit aux audacieux.",
+    "author": "Virgile"
+  },
+  {
+    "text": "Qui dort dîne.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Mens sana in corpore sano.",
+    "author": "Juvénal"
+  },
+  {
+    "text": "Diviser pour régner.",
+    "author": "Jules César"
+  },
+  {
+    "text": "Carpe diem.",
+    "author": "Horace"
+  },
+  {
+    "text": "Tempus fugit.",
+    "author": "Virgile"
+  },
+  {
+    "text": "Amor vincit omnia.",
+    "author": "Virgile"
+  },
+  {
+    "text": "In vino veritas.",
+    "author": "Plaute"
+  },
+  {
+    "text": "Per aspera ad astra.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "Dum spiro, spero.",
+    "author": "Cicéron"
+  },
+  {
+    "text": "Audaces fortuna iuvat.",
+    "author": "Virgile"
+  },
+  {
+    "text": "Sapere aude.",
+    "author": "Horace"
+  },
+  {
+    "text": "Cogito ergo sum.",
+    "author": "René Descartes"
+  },
+  {
+    "text": "De omnibus dubitandum.",
+    "author": "René Descartes"
+  },
+  {
+    "text": "L'homme est né pour travailler, comme l'oiseau pour voler.",
+    "author": "Martin Luther"
+  },
+  {
+    "text": "Dieu est dans les détails.",
+    "author": "Ludwig Mies van der Rohe"
+  },
+  {
+    "text": "Form follows function.",
+    "author": "Louis Sullivan"
+  },
+  {
+    "text": "Moins, c'est plus.",
+    "author": "Ludwig Mies van der Rohe"
+  },
+  {
+    "text": "Dieu est dans le détail.",
+    "author": "Gustave Flaubert"
+  },
+  {
+    "text": "La lecture de tous les bons livres ressemble à une conversation avec les plus honnêtes gens des siècles passés.",
+    "author": "René Descartes"
+  },
+  {
+    "text": "Le reste est silence.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "Le monde entier est un théâtre.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "Aimez tous, ne vous fiez qu'à quelques-uns, ne faites de tort à personne.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "Nous savons ce que nous sommes, mais pas ce que nous pourrions être.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "Le sot croit être sage.",
+    "author": "William Shakespeare"
+  },
+  {
+    "text": "Une civilisation qui s'engage dans la course aux armements finira par s'auto-détruire.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La paix ne peut être maintenue par la force ; elle ne peut être obtenue que par la compréhension.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Le problème aujourd'hui n'est pas l'énergie atomique, mais le cœur de l'homme.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La vie sans examen ne vaut pas la peine d'être vécue.",
+    "author": "Socrate"
+  },
+  {
+    "text": "Je ne suis pas d'accord avec ce que vous dites, mais je me battrai pour que vous puissiez le dire.",
+    "author": "Evelyn Beatrice Hall"
+  },
+  {
+    "text": "La démocratie est le pire des systèmes, à l'exception de tous les autres.",
+    "author": "Winston Churchill"
+  },
+  {
+    "text": "Le pessimiste voit le tunnel ; l'optimiste voit la lumière.",
+    "author": "Proverbe"
+  },
+  {
+    "text": "La simplicité est la clé de la brillance.",
+    "author": "Bruce Lee"
+  },
+  {
+    "text": "Ne crains pas l'échec, crains de ne pas essayer.",
+    "author": "Jack Ma"
+  },
+  {
+    "text": "Votre temps est limité, ne le gâchez pas en menant une existence qui n'est pas la vôtre.",
+    "author": "Steve Jobs"
+  },
+  {
+    "text": "L'innovation distingue un leader d'un suiveur.",
+    "author": "Steve Jobs"
+  },
+  {
+    "text": "Si vous voulez aller vite, allez seul. Si vous voulez aller loin, allez ensemble.",
+    "author": "Proverbe africain"
+  },
+  {
+    "text": "La meilleure façon de prédire l'avenir est de l'inventer.",
+    "author": "Alan Kay"
+  },
+  {
+    "text": "Les ordinateurs sont inutiles. Ils ne peuvent donner que des réponses.",
+    "author": "Pablo Picasso"
+  },
+  {
+    "text": "Tout ce qui est compliqué peut être simplifié.",
+    "author": "Charles Mingus"
+  },
+  {
+    "text": "La musique est la bande-son de la vie.",
+    "author": "Dick Clark"
+  },
+  {
+    "text": "Sans musique, la vie serait une erreur.",
+    "author": "Friedrich Nietzsche"
+  },
+  {
+    "text": "Ce qui ne me tue pas me rend plus fort.",
+    "author": "Friedrich Nietzsche"
+  },
+  {
+    "text": "Deviens ce que tu es.",
+    "author": "Friedrich Nietzsche"
+  },
+  {
+    "text": "Il faut avoir le chaos en soi pour enfanter une étoile qui danse.",
+    "author": "Friedrich Nietzsche"
+  },
+  {
+    "text": "L'amour est aveugle ; l'amitié ferme les yeux.",
+    "author": "Friedrich Nietzsche"
+  },
+  {
+    "text": "La joie prolonge la vie.",
+    "author": "Proverbe hébraïque"
+  },
+  {
+    "text": "Un ami fidèle est une vie sûre.",
+    "author": "Livre des Proverbes"
+  },
+  {
+    "text": "L'homme est le seul animal qui refuse d'être ce qu'il est.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "Je révolte, donc nous sommes.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "Il n'y a pas de soleil sans ombre.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "La vraie générosité envers l'avenir, c'est de tout donner au présent.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "L'amour est le poème de la nature.",
+    "author": "Honoré de Balzac"
+  },
+  {
+    "text": "Le secret des grands succès est de savoir s'entourer des meilleurs.",
+    "author": "Honoré de Balzac"
+  },
+  {
+    "text": "La gloire est le soleil des morts.",
+    "author": "Honoré de Balzac"
+  },
+  {
+    "text": "Le mérite a une voix pour qui sait l'entendre.",
+    "author": "Honoré de Balzac"
+  },
+  {
+    "text": "La politique est l'art du possible.",
+    "author": "Otto von Bismarck"
+  },
+  {
+    "text": "L'histoire ne nous absout pas.",
+    "author": "Otto von Bismarck"
+  },
+  {
+    "text": "La guerre, c'est la continuation de la politique par d'autres moyens.",
+    "author": "Carl von Clausewitz"
+  },
+  {
+    "text": "Le courage, c'est d'avoir peur et d'avancer quand même.",
+    "author": "John Wayne"
+  },
+  {
+    "text": "La peur tue l'esprit.",
+    "author": "Frank Herbert"
+  },
+  {
+    "text": "Il faut imaginer Sisyphe heureux.",
+    "author": "Albert Camus"
+  },
+  {
+    "text": "Tout le monde a un plan jusqu'à ce qu'il reçoive un coup.",
+    "author": "Mike Tyson"
+  },
+  {
+    "text": "Je peux accepter l'échec, tout le monde échoue à un moment.",
+    "author": "Michael Jordan"
+  },
+  {
+    "text": "Le talent gagne des matchs, mais le travail d'équipe gagne des championnats.",
+    "author": "Michael Jordan"
+  },
+  {
+    "text": "Je n'ai pas échoué. J'ai trouvé 10 000 solutions qui ne fonctionnent pas.",
+    "author": "Thomas Edison"
+  },
+  {
+    "text": "Montre-moi un homme heureux et je te montrerai un homme qui a un projet.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "Aimer, ce n'est pas se regarder l'un l'autre, c'est regarder ensemble dans la même direction.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "La perfection s'atteint non quand il n'y a plus rien à ajouter, mais quand il n'y a plus rien à retirer.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "Les grandes personnes ne comprennent jamais rien toutes seules.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "On n'a jamais fini de s'étonner.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "La terre nous enseigne plus sur nous que tous les livres.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "Il faut exiger de chacun ce que chacun peut donner.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "Les hommes oublient vite le mal qu'on leur a fait.",
+    "author": "Antoine de Saint-Exupéry"
+  },
+  {
+    "text": "La musique exprime ce qui ne peut être dit.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "Dieu a pour chaque crépuscule un nouveau matin.",
+    "author": "Victor Hugo"
+  },
+  {
+    "text": "La folie, c'est de refaire la même chose et d'attendre un résultat différent.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La vie, c'est comme une bicyclette, il faut avancer pour ne pas perdre l'équilibre.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Le monde tel que nous l'avons créé est un processus de notre pensée.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La logique vous mènera d'un point A à un point B.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Deux choses sont infinies : l'univers et la bêtise humaine.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "La science sans religion est boiteuse, la religion sans science est aveugle.",
+    "author": "Albert Einstein"
+  },
+  {
+    "text": "Rien dans la vie n'est à craindre, tout est à comprendre.",
+    "author": "Marie Curie"
+  },
+  {
+    "text": "Je vous propose la paix, la charité, la bienveillance.",
+    "author": "Marie Curie"
+  },
+  {
+    "text": "La science est belle.",
+    "author": "Richard Feynman"
+  },
+  {
+    "text": "Ce que je ne peux pas créer, je ne comprends pas.",
+    "author": "Richard Feynman"
+  },
+  {
+    "text": "La première chose à faire pour être heureux est de vouloir l'être.",
+    "author": "Marie de Rabutin-Chantal"
+  },
+  {
+    "text": "Le bonheur est un choix.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La vertu est le juste milieu.",
+    "author": "Aristote"
+  },
+  {
+    "text": "L'excellence n'est pas un acte mais une habitude.",
+    "author": "Aristote"
+  },
+  {
+    "text": "L'homme est un animal politique.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La connaissance commence par l'étonnement.",
+    "author": "Aristote"
+  },
+  {
+    "text": "Plaisir dans le travail met la perfection dans l'ouvrage.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La beauté est un don de Dieu.",
+    "author": "Aristote"
+  },
+  {
+    "text": "L'amitié est une âme en deux corps.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La jeunesse est facile à tromper.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La nature ne fait rien en vain.",
+    "author": "Aristote"
+  },
+  {
+    "text": "Le courage est la première des qualités humaines.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La justice est la vertu la plus parfaite.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La tempérance est le plaisir de l'âme.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La générosité est la moyenne en matière de richesse.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La magnanimité est la couronne des vertus.",
+    "author": "Aristote"
+  },
+  {
+    "text": "La prudence est la recta ratio agibilium.",
+    "author": "Thomas d'Aquin"
+  },
+  {
+    "text": "La foi est une certitude concernant ce qu'on espère.",
+    "author": "Épître aux Hébreux"
+  },
+  {
+    "text": "L'espérance ne déçoit pas.",
+    "author": "Paul de Tarse"
+  },
+  {
+    "text": "L'amour est patient, l'amour est plein de bonté.",
+    "author": "Paul de Tarse"
+  },
+  {
+    "text": "Tout passe, tout lasse, tout casse.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Qui a bu boira.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Chassez le naturel, il revient au galop.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Patience et longueur de temps font plus que force ni que rage.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Selon que vous serez puissant ou misérable, les jugements de cour vous rendront blanc ou noir.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Je plie et ne romps pas.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "La mort ne surprend point le sage, il est toujours prêt à partir.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Rien ne pèse tant qu'un secret.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Tout flatteur vit aux dépens de celui qui l'écoute.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "La confiance donne naissance à la confiance.",
+    "author": "Jean de La Fontaine"
+  },
+  {
+    "text": "Il faut tourner sept fois sa langue dans sa bouche avant de parler.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "Mieux vaut être seul que mal accompagné.",
+    "author": "Proverbe français"
+  },
+  {
+    "text": "On apprend en enseignant.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "La vie, si tu sais l'utiliser, est longue.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "Le bonheur est un bien que l'on s'est soi-même procuré.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "La fortune est aveugle.",
+    "author": "Sénèque"
+  },
+  {
+    "text": "La vertu suffit au bonheur.",
+    "author": "Sénèque"
+  }
+]

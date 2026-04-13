@@ -17,6 +17,7 @@ from telegram.error import BadRequest, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from tgworkbot.config import load_config
+from tgworkbot.citation_inspirante import format_citation_notification_html
 from tgworkbot.db import Db
 from tgworkbot.finance_snapshot import get_finance_block_for_user_preferences, parse_finance_selection
 from tgworkbot.http_logging import quiet_http_client_loggers
@@ -40,6 +41,7 @@ def _telegram_menu_commands() -> list[BotCommand]:
         BotCommand("lieuMeteo", "Definir le lieu meteo"),
         BotCommand("evenement_historique", "Activer/desactiver l'evenement historique"),
         BotCommand("cours_finance", "Choisir les cours/indices"),
+        BotCommand("citation_inspirante", "Activer/desactiver la citation du jour"),
         BotCommand("status", "Voir ma configuration"),
         BotCommand("simul_notif", "Tester la notification complète"),
         BotCommand("heure_notif", "Définir l'heure de notification"),
@@ -143,6 +145,9 @@ def _start_menu_text(*, is_admin: bool) -> str:
         "",
         "💹 Cours dans la notif :",
         "/cours_finance",
+        "",
+        "💬 Citation inspirante :",
+        "/citation_inspirante",
         "",
         "⏰ Définir l'heure de réception de notification :",
         "/heure_notif",
@@ -618,6 +623,16 @@ def _evenement_historique_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def _citation_inspirante_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(("✅ " if enabled else "") + "Oui", callback_data="cit:1"),
+            InlineKeyboardButton(("✅ " if not enabled else "") + "Non", callback_data="cit:0"),
+        ]
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
 def _finance_from_user(user) -> set[str]:
     return parse_finance_selection(getattr(user, "finance_selection", None))
 
@@ -727,6 +742,18 @@ async def cmd_evenement_historique(update: Update, context: ContextTypes.DEFAULT
         "dans ta notification quotidienne ?",
         parse_mode=ParseMode.HTML,
         reply_markup=_evenement_historique_keyboard(enabled=enabled),
+    )
+
+
+async def cmd_citation_inspirante(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db: Db = context.application.bot_data["db"]
+    chat_id = update.effective_chat.id
+    user = db.get_user(chat_id)
+    enabled = bool(user.recevoir_citation_inspirante) if user else False
+    await update.message.reply_text(
+        "Veux-tu recevoir une <b>citation inspirante</b> dans ta notification quotidienne ?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=_citation_inspirante_keyboard(enabled=enabled),
     )
 
 
@@ -1182,6 +1209,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     notif_days = _notif_days_from_user(user)
     notif_days_txt = ", ".join(day_labels[k] for k, _ in NOTIF_DAY_OPTIONS if k in notif_days) if notif_days else "Aucun"
     histo_pref = "Oui (événement historique)" if user.recevoir_evenement_historique else "Non"
+    citation_pref = "Oui (citation inspirante)" if user.recevoir_citation_inspirante else "Non"
     labels = dict(FINANCE_OPTIONS)
     fs = _finance_from_user(user)
     finance_pref = ", ".join(labels[k] for k, _ in FINANCE_OPTIONS if k in fs) if fs else "—"
@@ -1209,6 +1237,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"- Heure notif: {notif_time}\n"
         f"- Jours notif: {notif_days_txt}\n"
         f"- Événement historique: {histo_pref}\n"
+        f"- Citation inspirante: {citation_pref}\n"
         f"- Cours / indices: {finance_pref}"
     )
 
@@ -1782,7 +1811,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await q.edit_message_text(f"Événement historique : option {label}.")
         flow = _setup_flow(context=context, db=db, chat_id=chat_id)
         if flow and str(flow.get("step") or "") == "await_evenement_historique_click" and q.message:
+            _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_citation_inspirante_click")
+            await q.message.reply_text(
+                "Veux-tu recevoir une <b>citation inspirante</b> dans la notification ?",
+                parse_mode=ParseMode.HTML,
+                reply_markup=_citation_inspirante_keyboard(enabled=bool(user.recevoir_citation_inspirante)),
+            )
+        return
+
+    if data.startswith("cit:"):
+        raw = data.split(":", 1)[1].strip()
+        if raw not in {"0", "1"}:
+            return
+        enabled = raw == "1"
+        db.set_recevoir_citation_inspirante(chat_id, enabled)
+        label = "activée" if enabled else "désactivée"
+        await q.edit_message_text(f"Citation inspirante : option {label}.")
+        flow = _setup_flow(context=context, db=db, chat_id=chat_id)
+        if flow and str(flow.get("step") or "") == "await_citation_inspirante_click" and q.message:
             _setup_set_step(context=context, db=db, chat_id=chat_id, step="await_notif_days_click")
+            user = db.get_user(chat_id) or user
             await q.message.reply_text(
                 "Choisis les jours où tu veux recevoir la notification :",
                 reply_markup=_notif_days_keyboard(_notif_days_from_user(user)),
@@ -2297,6 +2345,14 @@ async def _render_notification_text_for_user(*, app: Application, user) -> str |
         except Exception:
             LOG.exception("historical_event failed for %s", user.chat_id)
 
+    if user.recevoir_citation_inspirante:
+        try:
+            block = format_citation_notification_html(cfg=cfg)
+            if block:
+                parts.append(block)
+        except Exception:
+            LOG.exception("citation inspirante failed for %s", user.chat_id)
+
     if not parts:
         return None
     return "\n\n".join(parts)
@@ -2430,6 +2486,7 @@ def _register_command_and_message_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("purge_db", cmd_purge_db))
     app.add_handler(CommandHandler("reset_all", cmd_reset_all))
     app.add_handler(CommandHandler("evenement_historique", cmd_evenement_historique))
+    app.add_handler(CommandHandler("citation_inspirante", cmd_citation_inspirante))
     app.add_handler(CommandHandler("cours_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("recevoir_news_finance", cmd_cours_finance))
     app.add_handler(CommandHandler("lieuMeteo", cmd_lieu_meteo))

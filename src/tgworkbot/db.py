@@ -38,6 +38,8 @@ class UserPrefs:
     last_notif_sent_key: str | None
     # Inclure un événement historique (positif / majeur) dans la notification
     recevoir_evenement_historique: bool
+    # Inclure une citation inspirante dans la notification
+    recevoir_citation_inspirante: bool
     # Selected news category: "tech" | "sport" | "science"
     news_category: str | None
     # Comma-separated finance keys: sp500,cac40,btc,gold
@@ -76,6 +78,7 @@ class Db:
                     notif_time TEXT,
                     last_notif_sent_key TEXT,
                     recevoir_evenement_historique INTEGER,
+                    recevoir_citation_inspirante INTEGER,
                     news_category TEXT,
                     finance_selection TEXT,
                     notif_days TEXT,
@@ -114,6 +117,7 @@ class Db:
             add_col("last_notif_sent_key", "last_notif_sent_key TEXT")
             add_col("news_category", "news_category TEXT")
             add_col("finance_selection", "finance_selection TEXT")
+            add_col("recevoir_citation_inspirante", "recevoir_citation_inspirante INTEGER DEFAULT 0")
             add_col("notif_days", "notif_days TEXT")
             # Persisted per-user ephemeral state (for webhook stateless mode).
             add_col("user_data_json", "user_data_json TEXT")
@@ -261,6 +265,9 @@ class Db:
             notif_time=row["notif_time"],
             last_notif_sent_key=row["last_notif_sent_key"],
             recevoir_evenement_historique=_row_bool_evenement_historique(row),
+            recevoir_citation_inspirante=bool(row["recevoir_citation_inspirante"])
+            if "recevoir_citation_inspirante" in row.keys()
+            else False,
             news_category=row["news_category"] if "news_category" in row.keys() else None,
             finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
             notif_days=row["notif_days"] if "notif_days" in row.keys() else None,
@@ -315,6 +322,9 @@ class Db:
                 notif_time=row["notif_time"],
                 last_notif_sent_key=row["last_notif_sent_key"],
                 recevoir_evenement_historique=_row_bool_evenement_historique(row),
+                recevoir_citation_inspirante=bool(row["recevoir_citation_inspirante"])
+                if "recevoir_citation_inspirante" in row.keys()
+                else False,
                 news_category=row["news_category"] if "news_category" in row.keys() else None,
                 finance_selection=row["finance_selection"] if "finance_selection" in row.keys() else None,
                 notif_days=row["notif_days"] if "notif_days" in row.keys() else None,
@@ -385,8 +395,8 @@ class Db:
                     arrivee_sa_id, arrivee_sa_label, allowed_modes,
                     meteo_label, meteo_lat, meteo_lon, segments_json,
                     notif_time, last_notif_sent_key, recevoir_evenement_historique,
-                    news_category, finance_selection, notif_days
-                ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL)
+                    recevoir_citation_inspirante, news_category, finance_selection, notif_days
+                ) VALUES (?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL)
                 ON CONFLICT(chat_id) DO UPDATE SET
                     depart=NULL,
                     direction=NULL,
@@ -402,6 +412,7 @@ class Db:
                     notif_time=NULL,
                     last_notif_sent_key=NULL,
                     recevoir_evenement_historique=0,
+                    recevoir_citation_inspirante=0,
                     news_category=NULL,
                     finance_selection=NULL,
                     notif_days=NULL,
@@ -429,6 +440,18 @@ class Db:
                 INSERT INTO users(chat_id, recevoir_evenement_historique) VALUES (?, ?)
                 ON CONFLICT(chat_id) DO UPDATE SET
                     recevoir_evenement_historique=excluded.recevoir_evenement_historique,
+                    updated_at=datetime('now')
+                """.strip(),
+                (chat_id, 1 if enabled else 0),
+            )
+
+    def set_recevoir_citation_inspirante(self, chat_id: int, enabled: bool) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO users(chat_id, recevoir_citation_inspirante) VALUES (?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    recevoir_citation_inspirante=excluded.recevoir_citation_inspirante,
                     updated_at=datetime('now')
                 """.strip(),
                 (chat_id, 1 if enabled else 0),

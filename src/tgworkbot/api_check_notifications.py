@@ -12,6 +12,7 @@ import httpx
 from telegram import Bot
 
 from tgworkbot.bot import process_one_webhook_update
+from tgworkbot.citation_inspirante import format_citation_notification_html
 from tgworkbot.config import load_config
 from tgworkbot.http_logging import quiet_http_client_loggers
 from tgworkbot.db import Db
@@ -292,6 +293,14 @@ async def _render_notification_text_for_user(*, cfg, provider, db, user) -> str 
                 parts.append(f"<b><u>{title}</u></b>\n" + escape_telegram_html(histo))
         except Exception:
             LOG.exception("historical_event failed for %s", user.chat_id)
+
+    if user.recevoir_citation_inspirante:
+        try:
+            block = format_citation_notification_html(cfg=cfg)
+            if block:
+                parts.append(block)
+        except Exception:
+            LOG.exception("citation inspirante failed for %s", user.chat_id)
 
     if not parts:
         return None
